@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import InstallPwaButton from "@/components/InstallPwaButton";
+import { supabase } from "@/lib/supabaseClient";
 
 type Watering = {
   dateIso: string; // YYYY-MM-DD
@@ -267,6 +269,13 @@ const INITIAL_PLANTS: Plant[] = [
 type QuickTab = "all" | "first" | "today" | "overdue";
 
 export default function Home() {
+  const router = useRouter();
+
+  // ===== Auth gate =====
+  const [authChecked, setAuthChecked] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  // ===== App state =====
   const [plants, setPlants] = useState<Plant[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -284,16 +293,49 @@ export default function Home() {
   const [quickTab, setQuickTab] = useState<QuickTab>("all");
 
   useEffect(() => {
+    // Checa sessão atual
+    supabase.auth.getSession().then(({ data }) => {
+      const session = data.session;
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+      setUserEmail(session.user.email ?? null);
+      setAuthChecked(true);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+      setUserEmail(session.user.email ?? null);
+      setAuthChecked(true);
+    });
+
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+
     const fromStorage = loadPlantsFromStorage();
     if (fromStorage) setPlants(fromStorage);
     else setPlants(INITIAL_PLANTS);
     setHydrated(true);
-  }, []);
+  }, [authChecked]);
 
   useEffect(() => {
     if (!hydrated) return;
     savePlantsToStorage(plants);
   }, [plants, hydrated]);
+
+  async function logout() {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  }
 
   function waterNow(plantId: string) {
     const { dateIso, timeBr } = nowInBrasiliaParts();
@@ -460,6 +502,14 @@ export default function Home() {
     };
   }
 
+  if (!authChecked) {
+    return (
+      <main style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
+        <p>Verificando login...</p>
+      </main>
+    );
+  }
+
   return (
     <>
       <main
@@ -474,11 +524,33 @@ export default function Home() {
           <p>Carregando...</p>
         ) : (
           <>
-            <header style={{ marginBottom: "1.2rem" }}>
-              <h1 style={{ margin: 0 }}>🌱 PlantaCheck</h1>
-              <p style={{ marginTop: 8, color: "#444" }}>
-                Controle Inteligente para Plantas Saudáveis
-              </p>
+            <header style={{ marginBottom: "1.2rem", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
+              <div>
+                <h1 style={{ margin: 0 }}>🌱 PlantaCheck</h1>
+                <p style={{ marginTop: 8, color: "#444" }}>
+                  Controle Inteligente para Plantas Saudáveis
+                </p>
+                {userEmail && (
+                  <div style={{ fontSize: 12, color: "#666" }}>
+                    Logado como: <strong>{userEmail}</strong>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={logout}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ccc",
+                  cursor: "pointer",
+                  background: "#fff",
+                  height: "fit-content",
+                }}
+                title="Sair"
+              >
+                Sair
+              </button>
             </header>
 
             {/* Atalhos */}
