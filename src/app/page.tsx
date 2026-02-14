@@ -1,51 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import InstallPwaButton from "@/components/InstallPwaButton";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import InstallPwaButton from "@/components/InstallPwaButton";
 
-type Watering = {
-  dateIso: string; // YYYY-MM-DD
-  time: string; // HH:mm
-};
+type Watering = { dateIso: string; time: string };
 
 type Plant = {
   id: string;
+  household_id: string;
   name: string;
-  place?: string;
-
-  lastWateredDateIso?: string;
-  lastWateredTime?: string;
-
+  place?: string | null;
+  last_watered_date_iso?: string | null;
+  last_watered_time?: string | null;
   waterings: Watering[];
+  frequency_days?: number | null;
+};
 
-  frequencyDays?: number;
+type Household = {
+  id: string;
+  name: string;
+  invite_code: string | null;
+  created_by: string | null;
 };
 
 const TZ_BRASILIA = "America/Sao_Paulo";
-const STORAGE_KEY = "plantacheck:v4:plants";
 
-// ===== Persistência =====
-function loadPlantsFromStorage(): Plant[] | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    return parsed as Plant[];
-  } catch {
-    return null;
-  }
-}
-function savePlantsToStorage(plants: Plant[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(plants));
-  } catch {}
-}
-
-// ===== Datas/Horas BR =====
 function nowInBrasiliaParts() {
   const now = new Date();
 
@@ -95,7 +76,6 @@ function dateIsoToUtcMs(dateIso: string) {
   const [y, m, d] = dateIso.split("-").map((n) => Number(n));
   return Date.UTC(y, m - 1, d);
 }
-
 function addDaysToIso(dateIso: string, addDays: number) {
   const ms = dateIsoToUtcMs(dateIso);
   const out = new Date(ms + addDays * 24 * 60 * 60 * 1000);
@@ -104,19 +84,16 @@ function addDaysToIso(dateIso: string, addDays: number) {
   const d = String(out.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
-
 function diffDaysIso(aIso: string, bIso: string) {
-  // b - a
   const a = dateIsoToUtcMs(aIso);
   const b = dateIsoToUtcMs(bIso);
   return Math.floor((b - a) / (1000 * 60 * 60 * 24));
 }
-
 function todayIsoBrasilia() {
   return nowInBrasiliaParts().dateIso;
 }
 
-// ===== Próxima rega =====
+// ===== Próxima rega / status =====
 type NextWaterInfo =
   | { kind: "noFrequency"; text: string }
   | { kind: "noLast"; text: string }
@@ -130,19 +107,19 @@ type NextWaterInfo =
     };
 
 function getNextWaterInfo(p: Plant): NextWaterInfo {
-  if (!p.frequencyDays || p.frequencyDays <= 0) {
+  if (!p.frequency_days || p.frequency_days <= 0) {
     return { kind: "noFrequency", text: "Frequência: —" };
   }
-  if (!p.lastWateredDateIso) {
+  if (!p.last_watered_date_iso) {
     return {
       kind: "noLast",
-      text: `Frequência: a cada ${p.frequencyDays} dia(s) • Próxima: —`,
+      text: `Frequência: a cada ${p.frequency_days} dia(s) • Próxima: —`,
     };
   }
 
-  const nextIso = addDaysToIso(p.lastWateredDateIso, p.frequencyDays);
+  const nextIso = addDaysToIso(p.last_watered_date_iso, p.frequency_days);
   const todayIso = todayIsoBrasilia();
-  const delta = diffDaysIso(todayIso, nextIso); // next - today
+  const delta = diffDaysIso(todayIso, nextIso);
 
   const isToday = delta === 0;
   const isOverdue = delta < 0;
@@ -162,15 +139,14 @@ function getNextWaterInfo(p: Plant): NextWaterInfo {
   };
 }
 
-// ===== Status =====
 type StatusKey = "semRega" | "emDia" | "atencao" | "urgente";
 type StatusInfo = { key: StatusKey; label: string; emoji: string };
 
 function statusForPlant(p: Plant): StatusInfo {
-  if (!p.lastWateredDateIso)
+  if (!p.last_watered_date_iso)
     return { key: "semRega", label: "Sem registro", emoji: "⚪" };
 
-  if (p.frequencyDays && p.frequencyDays > 0) {
+  if (p.frequency_days && p.frequency_days > 0) {
     const next = getNextWaterInfo(p);
     if (next.kind === "ok") {
       if (next.isOverdue) return { key: "urgente", label: "Atrasada", emoji: "🔴" };
@@ -180,7 +156,7 @@ function statusForPlant(p: Plant): StatusInfo {
   }
 
   const todayIso = todayIsoBrasilia();
-  const days = diffDaysIso(p.lastWateredDateIso, todayIso);
+  const days = diffDaysIso(p.last_watered_date_iso, todayIso);
   if (days <= 2) return { key: "emDia", label: "Em dia", emoji: "🟢" };
   if (days <= 5) return { key: "atencao", label: "Atenção", emoji: "🟡" };
   return { key: "urgente", label: "Regar urgente", emoji: "🔴" };
@@ -197,7 +173,7 @@ const STATUS_FILTERS: { key: "all" | StatusKey; label: string }[] = [
 type SortKey = "urgentePrimeiro" | "recentesPrimeiro" | "nomeAZ";
 
 function urgencyScore(p: Plant) {
-  if (!p.lastWateredDateIso) return 10_000;
+  if (!p.last_watered_date_iso) return 10_000;
 
   const next = getNextWaterInfo(p);
   if (next.kind === "ok") {
@@ -207,7 +183,7 @@ function urgencyScore(p: Plant) {
   }
 
   const todayIso = todayIsoBrasilia();
-  return diffDaysIso(p.lastWateredDateIso, todayIso);
+  return diffDaysIso(p.last_watered_date_iso, todayIso);
 }
 
 function compareBySort(a: Plant, b: Plant, sort: SortKey) {
@@ -219,16 +195,16 @@ function compareBySort(a: Plant, b: Plant, sort: SortKey) {
   }
 
   if (sort === "recentesPrimeiro") {
-    const aHas = Boolean(a.lastWateredDateIso);
-    const bHas = Boolean(b.lastWateredDateIso);
+    const aHas = Boolean(a.last_watered_date_iso);
+    const bHas = Boolean(b.last_watered_date_iso);
     if (aHas !== bHas) return aHas ? -1 : 1;
 
-    if (!a.lastWateredDateIso || !b.lastWateredDateIso)
+    if (!a.last_watered_date_iso || !b.last_watered_date_iso)
       return a.name.localeCompare(b.name, "pt-BR");
 
     const todayIso = todayIsoBrasilia();
-    const da = diffDaysIso(a.lastWateredDateIso, todayIso);
-    const db = diffDaysIso(b.lastWateredDateIso, todayIso);
+    const da = diffDaysIso(a.last_watered_date_iso, todayIso);
+    const db = diffDaysIso(b.last_watered_date_iso, todayIso);
     if (da !== db) return da - db;
     return a.name.localeCompare(b.name, "pt-BR");
   }
@@ -236,49 +212,32 @@ function compareBySort(a: Plant, b: Plant, sort: SortKey) {
   return a.name.localeCompare(b.name, "pt-BR");
 }
 
-const INITIAL_PLANTS: Plant[] = [
-  {
-    id: "1",
-    name: "Jiboia",
-    place: "Sala",
-    lastWateredDateIso: "2026-02-10",
-    lastWateredTime: "09:30",
-    waterings: [{ dateIso: "2026-02-10", time: "09:30" }],
-    frequencyDays: 3,
-  },
-  {
-    id: "2",
-    name: "Espada-de-São-Jorge",
-    place: "Varanda",
-    lastWateredDateIso: "2026-02-05",
-    lastWateredTime: "18:10",
-    waterings: [{ dateIso: "2026-02-05", time: "18:10" }],
-    frequencyDays: 14,
-  },
-  {
-    id: "3",
-    name: "Zamioculca",
-    place: "Quarto",
-    lastWateredDateIso: "2026-02-12",
-    lastWateredTime: "07:45",
-    waterings: [{ dateIso: "2026-02-12", time: "07:45" }],
-    frequencyDays: 7,
-  },
-];
+// ===== Helpers =====
+function makeInviteCode(len = 7) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
 
-type QuickTab = "all" | "first" | "today" | "overdue";
+export default function HomePage() {
+  // Auth
+  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
 
-export default function Home() {
-  const router = useRouter();
+  // Login UI
+  const [email, setEmail] = useState("");
+  const [authMsg, setAuthMsg] = useState<string | null>(null);
+  const [authErr, setAuthErr] = useState<string | null>(null);
 
-  // ===== Auth gate =====
-  const [authChecked, setAuthChecked] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  // Household
+  const [household, setHousehold] = useState<Household | null>(null);
+  const [inviteCodeInput, setInviteCodeInput] = useState("");
+  const [houseErr, setHouseErr] = useState<string | null>(null);
 
-  // ===== App state =====
+  // Plants
   const [plants, setPlants] = useState<Plant[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
+  // UI Filters
   const [name, setName] = useState("");
   const [place, setPlace] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -290,72 +249,248 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState<"all" | StatusKey>("all");
   const [sortBy, setSortBy] = useState<SortKey>("urgentePrimeiro");
 
-  const [quickTab, setQuickTab] = useState<QuickTab>("all");
+  // Realtime subscription ref
+  const rtRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
+  // 1) Boot auth
   useEffect(() => {
-    // Checa sessão atual
-    supabase.auth.getSession().then(({ data }) => {
-      const session = data.session;
-      if (!session) {
-        router.replace("/login");
-        return;
-      }
-      setUserEmail(session.user.email ?? null);
-      setAuthChecked(true);
-    });
+    let mounted = true;
+
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const uid = data.session?.user?.id ?? null;
+      if (!mounted) return;
+      setUserId(uid);
+      setLoading(false);
+    })();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        router.replace("/login");
-        return;
-      }
-      setUserEmail(session.user.email ?? null);
-      setAuthChecked(true);
+      setUserId(session?.user?.id ?? null);
     });
 
     return () => {
+      mounted = false;
       sub.subscription.unsubscribe();
     };
-  }, [router]);
+  }, []);
 
+  // 2) Load household after login
   useEffect(() => {
-    if (!authChecked) return;
+    if (!userId) {
+      setHousehold(null);
+      setPlants([]);
+      setHydrated(false);
+      if (rtRef.current) {
+        supabase.removeChannel(rtRef.current);
+        rtRef.current = null;
+      }
+      return;
+    }
 
-    const fromStorage = loadPlantsFromStorage();
-    if (fromStorage) setPlants(fromStorage);
-    else setPlants(INITIAL_PLANTS);
-    setHydrated(true);
-  }, [authChecked]);
+    (async () => {
+      setHouseErr(null);
 
+      // pegar household do usuário via household_members
+      const { data: hm, error: hmErr } = await supabase
+        .from("household_members")
+        .select("household_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (hmErr) {
+        setHouseErr(hmErr.message);
+        setHousehold(null);
+        return;
+      }
+
+      // se não tem lar ainda, cria automaticamente
+      if (!hm?.household_id) {
+        const invite = makeInviteCode();
+
+        const { data: h, error: hErr } = await supabase
+          .from("households")
+          .insert({ name: "Casa PlantaCheck", invite_code: invite, created_by: userId })
+          .select("*")
+          .single();
+
+        if (hErr) {
+          setHouseErr(hErr.message);
+          setHousehold(null);
+          return;
+        }
+
+        const { error: mErr } = await supabase
+          .from("household_members")
+          .insert({ household_id: h.id, user_id: userId, role: "owner" });
+
+        if (mErr) {
+          setHouseErr(mErr.message);
+          setHousehold(null);
+          return;
+        }
+
+        setHousehold(h as Household);
+        return;
+      }
+
+      // se já tem, carrega
+      const { data: h2, error: h2Err } = await supabase
+        .from("households")
+        .select("*")
+        .eq("id", hm.household_id)
+        .single();
+
+      if (h2Err) {
+        setHouseErr(h2Err.message);
+        setHousehold(null);
+        return;
+      }
+
+      setHousehold(h2 as Household);
+    })();
+  }, [userId]);
+
+  // 3) Load plants + realtime once household is ready
   useEffect(() => {
-    if (!hydrated) return;
-    savePlantsToStorage(plants);
-  }, [plants, hydrated]);
+    if (!userId || !household?.id) return;
+
+    let cancelled = false;
+
+    (async () => {
+      setHydrated(false);
+
+      const { data, error } = await supabase
+        .from("plants")
+        .select("*")
+        .eq("household_id", household.id)
+        .order("created_at", { ascending: false });
+
+      if (cancelled) return;
+
+      if (error) {
+        setHouseErr(error.message);
+        setPlants([]);
+        setHydrated(true);
+        return;
+      }
+
+      setPlants((data as any as Plant[]) ?? []);
+      setHydrated(true);
+    })();
+
+    // realtime: re-subscrever para este household
+    if (rtRef.current) {
+      supabase.removeChannel(rtRef.current);
+      rtRef.current = null;
+    }
+
+    const ch = supabase
+      .channel(`plants:${household.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "plants", filter: `household_id=eq.${household.id}` },
+        (payload) => {
+          // aplica patch local
+          setPlants((prev) => {
+            const ev = payload.eventType;
+            if (ev === "INSERT") {
+              const row = payload.new as any as Plant;
+              // evita duplicar
+              if (prev.some((p) => p.id === row.id)) return prev;
+              return [row, ...prev];
+            }
+            if (ev === "UPDATE") {
+              const row = payload.new as any as Plant;
+              return prev.map((p) => (p.id === row.id ? row : p));
+            }
+            if (ev === "DELETE") {
+              const oldRow = payload.old as any as { id: string };
+              return prev.filter((p) => p.id !== oldRow.id);
+            }
+            return prev;
+          });
+        }
+      )
+      .subscribe();
+
+    rtRef.current = ch;
+
+    return () => {
+      cancelled = true;
+      if (rtRef.current) {
+        supabase.removeChannel(rtRef.current);
+        rtRef.current = null;
+      }
+    };
+  }, [userId, household?.id]);
+
+  // ===== Actions =====
+  async function sendMagicLink(e: React.FormEvent) {
+    e.preventDefault();
+    setAuthErr(null);
+    setAuthMsg(null);
+
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setAuthErr("Informe seu e-mail.");
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: trimmed,
+      options: {
+        emailRedirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
+      },
+    });
+
+    if (error) setAuthErr(error.message);
+    else setAuthMsg("Link enviado! Confira seu e-mail para entrar.");
+  }
 
   async function logout() {
     await supabase.auth.signOut();
-    router.replace("/login");
   }
 
-  function waterNow(plantId: string) {
-    const { dateIso, timeBr } = nowInBrasiliaParts();
-    const newW: Watering = { dateIso, time: timeBr };
+  async function joinByInvite() {
+    setHouseErr(null);
+    const code = inviteCodeInput.trim().toUpperCase();
+    if (!code) {
+      setHouseErr("Informe o código de convite.");
+      return;
+    }
+    if (!userId) return;
 
-    setPlants((prev) =>
-      prev.map((p) => {
-        if (p.id !== plantId) return p;
-        return {
-          ...p,
-          lastWateredDateIso: dateIso,
-          lastWateredTime: timeBr,
-          waterings: [newW, ...p.waterings],
-        };
-      })
-    );
+    const { data: h, error: hErr } = await supabase
+      .from("households")
+      .select("*")
+      .eq("invite_code", code)
+      .single();
+
+    if (hErr) {
+      setHouseErr("Código inválido (ou lar não encontrado).");
+      return;
+    }
+
+    // cria membership
+    const { error: mErr } = await supabase
+      .from("household_members")
+      .insert({ household_id: (h as any).id, user_id: userId, role: "member" });
+
+    if (mErr) {
+      // se já existe, ok
+      if (!String(mErr.message).toLowerCase().includes("duplicate")) {
+        setHouseErr(mErr.message);
+        return;
+      }
+    }
+
+    setHousehold(h as any as Household);
+    setInviteCodeInput("");
   }
 
-  function addPlant(e: React.FormEvent) {
+  async function addPlant(e: React.FormEvent) {
     e.preventDefault();
+    if (!household?.id) return;
 
     const trimmedName = name.trim();
     const trimmedPlace = place.trim();
@@ -364,30 +499,81 @@ export default function Home() {
       setFormError("Informe o nome da planta.");
       return;
     }
-
     setFormError(null);
 
-    const newPlant: Plant = {
-      id: crypto.randomUUID(),
+    const { error } = await supabase.from("plants").insert({
+      household_id: household.id,
       name: trimmedName,
-      place: trimmedPlace ? trimmedPlace : undefined,
-      lastWateredDateIso: undefined,
-      lastWateredTime: undefined,
+      place: trimmedPlace ? trimmedPlace : null,
       waterings: [],
-      frequencyDays: undefined,
-    };
+      frequency_days: null,
+      last_watered_date_iso: null,
+      last_watered_time: null,
+    });
 
-    setPlants((prev) => [newPlant, ...prev]);
+    if (error) {
+      setFormError(error.message);
+      return;
+    }
+
     setName("");
     setPlace("");
   }
 
-  function removePlant(plantId: string) {
+  async function waterNow(plantId: string) {
+    const { dateIso, timeBr } = nowInBrasiliaParts();
+    const plant = plants.find((p) => p.id === plantId);
+    if (!plant) return;
+
+    const nextWaterings = [{ dateIso, time: timeBr }, ...(plant.waterings ?? [])];
+
+    // otimista
+    setPlants((prev) =>
+      prev.map((p) =>
+        p.id === plantId
+          ? { ...p, last_watered_date_iso: dateIso, last_watered_time: timeBr, waterings: nextWaterings }
+          : p
+      )
+    );
+
+    const { error } = await supabase
+      .from("plants")
+      .update({
+        last_watered_date_iso: dateIso,
+        last_watered_time: timeBr,
+        waterings: nextWaterings,
+      })
+      .eq("id", plantId);
+
+    if (error) {
+      // rollback simples: recarrega lista
+      const { data } = await supabase
+        .from("plants")
+        .select("*")
+        .eq("household_id", household?.id ?? "")
+        .order("created_at", { ascending: false });
+      setPlants((data as any as Plant[]) ?? []);
+    }
+  }
+
+  async function removePlant(plantId: string) {
     const plant = plants.find((p) => p.id === plantId);
     const ok = window.confirm(`Remover "${plant?.name ?? "esta planta"}"?`);
     if (!ok) return;
 
+    // otimista
     setPlants((prev) => prev.filter((p) => p.id !== plantId));
+
+    const { error } = await supabase.from("plants").delete().eq("id", plantId);
+    if (error) {
+      // se falhar, recarrega
+      const { data } = await supabase
+        .from("plants")
+        .select("*")
+        .eq("household_id", household?.id ?? "")
+        .order("created_at", { ascending: false });
+      setPlants((data as any as Plant[]) ?? []);
+    }
 
     if (editingId === plantId) {
       setEditingId(null);
@@ -400,31 +586,43 @@ export default function Home() {
     setEditingId(plantId);
     setEditPlace(plant?.place ?? "");
   }
-
   function cancelEditPlace() {
     setEditingId(null);
     setEditPlace("");
   }
-
-  function saveEditPlace(plantId: string) {
+  async function saveEditPlace(plantId: string) {
     const trimmed = editPlace.trim();
-    setPlants((prev) =>
-      prev.map((p) =>
-        p.id === plantId ? { ...p, place: trimmed ? trimmed : undefined } : p
-      )
-    );
+
+    // otimista
+    setPlants((prev) => prev.map((p) => (p.id === plantId ? { ...p, place: trimmed ? trimmed : null } : p)));
+
     setEditingId(null);
     setEditPlace("");
+
+    const { error } = await supabase
+      .from("plants")
+      .update({ place: trimmed ? trimmed : null })
+      .eq("id", plantId);
+
+    if (error) {
+      const { data } = await supabase
+        .from("plants")
+        .select("*")
+        .eq("household_id", household?.id ?? "")
+        .order("created_at", { ascending: false });
+      setPlants((data as any as Plant[]) ?? []);
+    }
   }
 
+  // ===== UI helpers =====
   const counts = useMemo(() => {
     let first = 0;
     let today = 0;
     let overdue = 0;
 
     for (const p of plants) {
-      const hasFreq = Boolean(p.frequencyDays && p.frequencyDays > 0);
-      const hasLast = Boolean(p.lastWateredDateIso);
+      const hasFreq = Boolean(p.frequency_days && p.frequency_days > 0);
+      const hasLast = Boolean(p.last_watered_date_iso);
 
       if (hasFreq && !hasLast) first += 1;
 
@@ -437,33 +635,14 @@ export default function Home() {
     return { first, today, overdue };
   }, [plants]);
 
-  useEffect(() => {
-    if (counts.first === 0 && quickTab === "first") setQuickTab("all");
-  }, [counts.first, quickTab]);
-
   const visiblePlants = useMemo(() => {
     const q = query.trim().toLowerCase();
 
     const filtered = plants.filter((p) => {
-      if (quickTab !== "all") {
-        if (quickTab === "first") {
-          const hasFreq = Boolean(p.frequencyDays && p.frequencyDays > 0);
-          const hasLast = Boolean(p.lastWateredDateIso);
-          if (!(hasFreq && !hasLast)) return false;
-        } else {
-          const next = getNextWaterInfo(p);
-          if (next.kind !== "ok") return false;
-          if (quickTab === "today" && !next.isToday) return false;
-          if (quickTab === "overdue" && !next.isOverdue) return false;
-        }
-      }
-
       const st = statusForPlant(p);
 
       const matchesQuery =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        (p.place ?? "").toLowerCase().includes(q);
+        !q || p.name.toLowerCase().includes(q) || (p.place ?? "").toLowerCase().includes(q);
 
       const matchesStatus = statusFilter === "all" ? true : st.key === statusFilter;
 
@@ -471,7 +650,7 @@ export default function Home() {
     });
 
     return filtered.sort((a, b) => compareBySort(a, b, sortBy));
-  }, [plants, query, statusFilter, sortBy, quickTab]);
+  }, [plants, query, statusFilter, sortBy]);
 
   function chipStyle(active: boolean) {
     return {
@@ -487,122 +666,132 @@ export default function Home() {
     };
   }
 
-  function badgeStyle() {
-    return {
-      minWidth: 22,
-      height: 22,
-      borderRadius: 999,
-      border: "1px solid #ccc",
-      padding: "0 6px",
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: 12,
-      background: "#fff",
-    };
-  }
-
-  if (!authChecked) {
+  // ===== Screens =====
+  if (loading) {
     return (
       <main style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
-        <p>Verificando login...</p>
+        <p>Carregando...</p>
       </main>
     );
   }
 
+  // Not logged
+  if (!userId) {
+    return (
+      <>
+        <main style={{ padding: 24, fontFamily: "Arial, sans-serif", maxWidth: 640, margin: "0 auto" }}>
+          <h1 style={{ marginTop: 0 }}>🌱 PlantaCheck</h1>
+          <p style={{ color: "#444" }}>Entre com seu e-mail para acessar suas plantas sincronizadas.</p>
+
+          <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 10, marginTop: 14 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span>E-mail</span>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="seuemail@exemplo.com"
+                style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
+              />
+            </label>
+
+            {authErr && <div style={{ color: "crimson", fontSize: 14 }}>{authErr}</div>}
+            {authMsg && <div style={{ color: "green", fontSize: 14 }}>{authMsg}</div>}
+
+            <button
+              type="submit"
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #ccc",
+                cursor: "pointer",
+                background: "#2E7D32",
+                color: "white",
+                fontWeight: 700,
+                width: "fit-content",
+              }}
+            >
+              Enviar link de acesso
+            </button>
+          </form>
+
+          <p style={{ marginTop: 18, fontSize: 13, color: "#666" }}>
+            Dica: depois de entrar, instale o app pelo botão “Instalar App”.
+          </p>
+        </main>
+
+        <InstallPwaButton />
+      </>
+    );
+  }
+
+  // Logged, but household error
+  if (houseErr) {
+    return (
+      <main style={{ padding: 24, fontFamily: "Arial, sans-serif", maxWidth: 800, margin: "0 auto" }}>
+        <h1 style={{ marginTop: 0 }}>🌱 PlantaCheck</h1>
+        <p style={{ color: "crimson" }}><strong>Erro:</strong> {houseErr}</p>
+        <button
+          onClick={logout}
+          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ccc", cursor: "pointer" }}
+        >
+          Sair
+        </button>
+      </main>
+    );
+  }
+
+  // Logged, household ok
   return (
     <>
-      <main
-        style={{
-          padding: "clamp(16px, 3vw, 32px)",
-          fontFamily: "Arial, sans-serif",
-          maxWidth: 1400,
-          margin: "0 auto",
-        }}
-      >
+      <main style={{ padding: "clamp(16px, 3vw, 32px)", fontFamily: "Arial, sans-serif", maxWidth: 1400, margin: "0 auto" }}>
+        <header style={{ marginBottom: "1.2rem", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
+          <div>
+            <h1 style={{ margin: 0 }}>🌱 PlantaCheck</h1>
+            <p style={{ marginTop: 8, color: "#444" }}>
+              Sincronizado no lar: <strong>{household?.name ?? "—"}</strong>
+            </p>
+            <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
+              Convite da casa: <strong>{household?.invite_code ?? "—"}</strong> (envie para sua namorada entrar no mesmo lar)
+            </p>
+          </div>
+
+          <button
+            onClick={logout}
+            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ccc", cursor: "pointer", background: "#fff", height: 42 }}
+            title="Sair"
+          >
+            Sair
+          </button>
+        </header>
+
+        {/* Entrar por convite (caso você queira entrar em outra casa) */}
+        <section style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16, background: "white", marginBottom: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Entrar em um lar pelo convite (opcional)</h2>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span>Código</span>
+              <input
+                value={inviteCodeInput}
+                onChange={(e) => setInviteCodeInput(e.target.value)}
+                placeholder="EX: A1B2C3D"
+                style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc", minWidth: 220, textTransform: "uppercase" }}
+              />
+            </label>
+            <button
+              onClick={joinByInvite}
+              style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ccc", cursor: "pointer", background: "#f7f7f7", height: 42 }}
+            >
+              Entrar
+            </button>
+          </div>
+        </section>
+
         {!hydrated ? (
-          <p>Carregando...</p>
+          <p>Carregando plantas...</p>
         ) : (
           <>
-            <header style={{ marginBottom: "1.2rem", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
-              <div>
-                <h1 style={{ margin: 0 }}>🌱 PlantaCheck</h1>
-                <p style={{ marginTop: 8, color: "#444" }}>
-                  Controle Inteligente para Plantas Saudáveis
-                </p>
-                {userEmail && (
-                  <div style={{ fontSize: 12, color: "#666" }}>
-                    Logado como: <strong>{userEmail}</strong>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={logout}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ccc",
-                  cursor: "pointer",
-                  background: "#fff",
-                  height: "fit-content",
-                }}
-                title="Sair"
-              >
-                Sair
-              </button>
-            </header>
-
-            {/* Atalhos */}
-            <section
-              style={{
-                border: "1px solid #ddd",
-                borderRadius: 12,
-                padding: 16,
-                background: "white",
-                marginBottom: 16,
-              }}
-            >
-              <h2 style={{ marginTop: 0 }}>Atalhos</h2>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
-                <button style={chipStyle(quickTab === "all")} onClick={() => setQuickTab("all")}>
-                  Todos
-                </button>
-
-                {counts.first > 0 && (
-                  <button style={chipStyle(quickTab === "first")} onClick={() => setQuickTab("first")}>
-                    Primeira rega <span style={badgeStyle()}>{counts.first}</span>
-                  </button>
-                )}
-
-                <button style={chipStyle(quickTab === "today")} onClick={() => setQuickTab("today")}>
-                  Hoje <span style={badgeStyle()}>{counts.today}</span>
-                </button>
-
-                <button style={chipStyle(quickTab === "overdue")} onClick={() => setQuickTab("overdue")}>
-                  Atrasadas <span style={badgeStyle()}>{counts.overdue}</span>
-                </button>
-              </div>
-            </section>
-
-            {/* Formulário */}
-            <section
-              style={{
-                border: "1px solid #ddd",
-                borderRadius: 12,
-                padding: 16,
-                background: "white",
-                marginBottom: 16,
-              }}
-            >
+            {/* Adicionar */}
+            <section style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16, background: "white", marginBottom: 16 }}>
               <h2 style={{ marginTop: 0 }}>Adicionar planta</h2>
 
               <form onSubmit={addPlant} style={{ display: "grid", gap: 10 }}>
@@ -644,16 +833,8 @@ export default function Home() {
               </form>
             </section>
 
-            {/* Controles */}
-            <section
-              style={{
-                border: "1px solid #ddd",
-                borderRadius: 12,
-                padding: 16,
-                background: "white",
-                marginBottom: 16,
-              }}
-            >
+            {/* Filtros */}
+            <section style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16, background: "white", marginBottom: 16 }}>
               <h2 style={{ marginTop: 0 }}>Filtros</h2>
 
               <div style={{ display: "grid", gap: 10 }}>
@@ -701,7 +882,6 @@ export default function Home() {
                       setQuery("");
                       setStatusFilter("all");
                       setSortBy("urgentePrimeiro");
-                      setQuickTab("all");
                     }}
                     style={{
                       padding: "10px 12px",
@@ -735,31 +915,17 @@ export default function Home() {
                   {visiblePlants.map((p) => {
                     const st = statusForPlant(p);
 
-                    const lastLine = p.lastWateredDateIso
-                      ? `💧 Última rega: ${formatIsoToBrDate(p.lastWateredDateIso)} às ${p.lastWateredTime ?? "—"}`
+                    const lastLine = p.last_watered_date_iso
+                      ? `💧 Última rega: ${formatIsoToBrDate(p.last_watered_date_iso)} às ${p.last_watered_time ?? "—"}`
                       : "💧 Última rega: —";
 
                     const nextInfo = getNextWaterInfo(p);
 
                     return (
-                      <li
-                        key={p.id}
-                        style={{
-                          border: "1px solid #ddd",
-                          borderRadius: 12,
-                          padding: 0,
-                          background: "white",
-                          overflow: "hidden",
-                        }}
-                      >
+                      <li key={p.id} style={{ border: "1px solid #ddd", borderRadius: 12, padding: 0, background: "white", overflow: "hidden" }}>
                         <Link
                           href={`/planta/${p.id}`}
-                          style={{
-                            display: "block",
-                            padding: 16,
-                            color: "inherit",
-                            textDecoration: "none",
-                          }}
+                          style={{ display: "block", padding: 16, color: "inherit", textDecoration: "none" }}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
                             <div>
@@ -784,25 +950,10 @@ export default function Home() {
                           </div>
                         </Link>
 
-                        <div
-                          style={{
-                            borderTop: "1px solid #eee",
-                            padding: 12,
-                            display: "flex",
-                            gap: 10,
-                            flexWrap: "wrap",
-                            alignItems: "center",
-                          }}
-                        >
+                        <div style={{ borderTop: "1px solid #eee", padding: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             onClick={() => waterNow(p.id)}
-                            style={{
-                              padding: "10px 12px",
-                              borderRadius: 10,
-                              border: "1px solid #ccc",
-                              cursor: "pointer",
-                              background: "#f7f7f7",
-                            }}
+                            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ccc", cursor: "pointer", background: "#f7f7f7" }}
                           >
                             Reguei agora
                           </button>
@@ -810,13 +961,7 @@ export default function Home() {
                           {editingId !== p.id ? (
                             <button
                               onClick={() => startEditPlace(p.id)}
-                              style={{
-                                padding: "10px 12px",
-                                borderRadius: 10,
-                                border: "1px solid #ccc",
-                                cursor: "pointer",
-                                background: "#fff",
-                              }}
+                              style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ccc", cursor: "pointer", background: "#fff" }}
                             >
                               ✏️ Editar local
                             </button>
@@ -826,34 +971,17 @@ export default function Home() {
                                 value={editPlace}
                                 onChange={(e) => setEditPlace(e.target.value)}
                                 placeholder="Ex.: Sala, Varanda..."
-                                style={{
-                                  padding: 10,
-                                  borderRadius: 10,
-                                  border: "1px solid #ccc",
-                                  minWidth: 220,
-                                }}
+                                style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc", minWidth: 220 }}
                               />
                               <button
                                 onClick={() => saveEditPlace(p.id)}
-                                style={{
-                                  padding: "10px 12px",
-                                  borderRadius: 10,
-                                  border: "1px solid #ccc",
-                                  cursor: "pointer",
-                                  background: "#f7f7f7",
-                                }}
+                                style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ccc", cursor: "pointer", background: "#f7f7f7" }}
                               >
                                 ✅ Salvar
                               </button>
                               <button
                                 onClick={cancelEditPlace}
-                                style={{
-                                  padding: "10px 12px",
-                                  borderRadius: 10,
-                                  border: "1px solid #ccc",
-                                  cursor: "pointer",
-                                  background: "#fff",
-                                }}
+                                style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ccc", cursor: "pointer", background: "#fff" }}
                               >
                                 ❌ Cancelar
                               </button>
@@ -862,14 +990,7 @@ export default function Home() {
 
                           <button
                             onClick={() => removePlant(p.id)}
-                            style={{
-                              padding: "10px 12px",
-                              borderRadius: 10,
-                              border: "1px solid #ccc",
-                              cursor: "pointer",
-                              background: "#fff",
-                              marginLeft: "auto",
-                            }}
+                            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ccc", cursor: "pointer", background: "#fff", marginLeft: "auto" }}
                             title="Remover planta"
                           >
                             🗑️ Remover
@@ -882,7 +1003,6 @@ export default function Home() {
               )}
             </section>
 
-            {/* ✅ Rodapé discreto */}
             <footer style={{ marginTop: 28, paddingTop: 14, borderTop: "1px solid #eee", color: "#666", fontSize: 13 }}>
               <Link href="/backup" style={{ color: "inherit", textDecoration: "underline" }}>
                 Backup e exportações
@@ -892,7 +1012,6 @@ export default function Home() {
         )}
       </main>
 
-      {/* ✅ Botão flutuante do PWA (só aparece quando disponível) */}
       <InstallPwaButton />
     </>
   );
