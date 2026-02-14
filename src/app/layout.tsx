@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import SwRegister from "./SwRegister";
+import InstallPwaButton from "@/components/InstallPwaButton";
 
 export const metadata: Metadata = {
   title: "PlantaCheck",
@@ -18,6 +19,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <SwRegister />
         {children}
+
+        {/* ✅ botão sempre disponível em qualquer rota, inclusive /login */}
+        <InstallPwaButton />
       </body>
     </html>
   );
