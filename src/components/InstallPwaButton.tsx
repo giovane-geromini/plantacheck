@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -8,11 +8,16 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 function isInStandaloneMode() {
-  // Android/Chrome: display-mode
   const isStandaloneDisplay = window.matchMedia?.("(display-mode: standalone)")?.matches;
-  // iOS Safari: navigator.standalone
   const isIOSStandalone = (navigator as any).standalone === true;
   return Boolean(isStandaloneDisplay || isIOSStandalone);
+}
+
+function isSecureContextForPWA() {
+  if (typeof window === "undefined") return false;
+  if (window.isSecureContext) return true;
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1";
 }
 
 export default function InstallPwaButton() {
@@ -20,16 +25,30 @@ export default function InstallPwaButton() {
   const [installed, setInstalled] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
+  const hideTimerRef = useRef<number | null>(null);
+
   const isIOS = useMemo(() => {
     if (typeof navigator === "undefined") return false;
     const ua = navigator.userAgent.toLowerCase();
     return /iphone|ipad|ipod/.test(ua);
   }, []);
 
+  const canShowInstallUI = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    const inIframe = window.self !== window.top;
+    if (inIframe) return false;
+    return true;
+  }, []);
+
   useEffect(() => {
     setInstalled(isInStandaloneMode());
 
+    const mm = window.matchMedia?.("(display-mode: standalone)");
+    const onDisplayModeChange = () => setInstalled(isInStandaloneMode());
+    mm?.addEventListener?.("change", onDisplayModeChange);
+
     const onBeforeInstall = (e: Event) => {
+      if (!isSecureContextForPWA()) return;
       e.preventDefault();
       setPromptEvent(e as BeforeInstallPromptEvent);
     };
@@ -44,26 +63,37 @@ export default function InstallPwaButton() {
     window.addEventListener("appinstalled", onAppInstalled);
 
     return () => {
+      mm?.removeEventListener?.("change", onDisplayModeChange);
       window.removeEventListener("beforeinstallprompt", onBeforeInstall);
       window.removeEventListener("appinstalled", onAppInstalled);
+      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
     };
   }, []);
 
-  if (installed) return null;
+  if (!canShowInstallUI || installed) return null;
 
   const canPrompt = Boolean(promptEvent);
 
   async function handleInstall() {
     if (promptEvent) {
-      await promptEvent.prompt();
-      await promptEvent.userChoice;
-      setPromptEvent(null);
+      try {
+        await promptEvent.prompt();
+        await promptEvent.userChoice;
+      } finally {
+        setPromptEvent(null);
+      }
       return;
     }
 
-    // Sem evento (caso comum em http por IP / iOS / etc) -> mostrar ajuda
     setShowHelp(true);
-    setTimeout(() => setShowHelp(false), 8000);
+
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = window.setTimeout(() => setShowHelp(false), 12000);
+  }
+
+  function closeHelp() {
+    setShowHelp(false);
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
   }
 
   return (
@@ -91,11 +121,13 @@ export default function InstallPwaButton() {
 
       {showHelp && (
         <div
+          role="dialog"
+          aria-label="Ajuda para instalar o app"
           style={{
             position: "fixed",
             bottom: 72,
             right: 16,
-            maxWidth: 280,
+            maxWidth: 300,
             padding: 12,
             borderRadius: 12,
             background: "white",
@@ -104,21 +136,43 @@ export default function InstallPwaButton() {
             zIndex: 1001,
             color: "#222",
             fontSize: 13,
-            lineHeight: 1.3,
+            lineHeight: 1.35,
           }}
         >
-          <strong>Instalação manual</strong>
-          <div style={{ marginTop: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+            <strong>Instalação manual</strong>
+            <button
+              onClick={closeHelp}
+              style={{
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                fontSize: 16,
+                lineHeight: 1,
+                color: "#444",
+              }}
+              aria-label="Fechar"
+              title="Fechar"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div style={{ marginTop: 8 }}>
             {isIOS ? (
               <>
-                No Safari: toque em <strong>Compartilhar</strong> → <strong>Adicionar à Tela de Início</strong>.
+                No <strong>Safari</strong>: toque em <strong>Compartilhar</strong> →{" "}
+                <strong>Adicionar à Tela de Início</strong>.
               </>
             ) : (
               <>
-                No Chrome: toque em <strong>⋮</strong> → <strong>Adicionar à tela inicial</strong>.
-                <div style={{ marginTop: 6, color: "#555" }}>
-                  (Via IP/HTTP o botão automático pode não aparecer.)
-                </div>
+                No <strong>Chrome</strong>: toque em <strong>⋮</strong> →{" "}
+                <strong>Adicionar à tela inicial</strong>.
+                {!isSecureContextForPWA() && (
+                  <div style={{ marginTop: 8, color: "#555" }}>
+                    Dica: a instalação automática costuma exigir <strong>HTTPS</strong>. (No seu domínio já é HTTPS.)
+                  </div>
+                )}
               </>
             )}
           </div>

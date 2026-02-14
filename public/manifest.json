@@ -1,24 +1,28 @@
 {
   "name": "PlantaCheck",
   "short_name": "PlantaCheck",
-  "description": "Controle Inteligente para Plantas Saudáveis",
+  "description": "Controle inteligente das suas plantas",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#1B5E20",
+  "background_color": "#FFFFFF",
   "theme_color": "#2E7D32",
-  "orientation": "portrait",
   "icons": [
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "maskable"
     }
   ]
 }
