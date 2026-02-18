@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import InstallPwaButton from "@/components/InstallPwaButton";
-import { supabase } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 type Watering = {
   dateIso: string; // YYYY-MM-DD
@@ -273,6 +273,7 @@ export default function Home() {
 
   // ===== Auth gate =====
   const [authChecked, setAuthChecked] = useState(false);
+  const [authStatus, setAuthStatus] = useState("Verificando login...");
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // ===== App state =====
@@ -292,38 +293,85 @@ export default function Home() {
 
   const [quickTab, setQuickTab] = useState<QuickTab>("all");
 
+  // ===== Gate principal: sessão + password_set =====
   useEffect(() => {
-    // Checa sessão atual
-    supabase.auth.getSession().then(({ data }) => {
-      const session = data.session;
-      if (!session) {
-        router.replace("/login");
-        return;
-      }
-      setUserEmail(session.user.email ?? null);
-      setAuthChecked(true);
-    });
+    let cancelled = false;
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
+    const safeSet = (fn: () => void) => {
+      if (!cancelled) fn();
+    };
+
+    const checkGate = async () => {
+      safeSet(() => {
+        setAuthChecked(false);
+        setAuthStatus("Verificando sessão...");
+      });
+
+      const { data, error } = await supabaseBrowser.auth.getSession();
+      if (error) {
         router.replace("/login");
         return;
       }
-      setUserEmail(session.user.email ?? null);
-      setAuthChecked(true);
+
+      const session = data.session;
+      if (!session?.user) {
+        router.replace("/login");
+        return;
+      }
+
+      const user = session.user;
+      safeSet(() => setUserEmail(user.email ?? null));
+
+      safeSet(() => setAuthStatus("Checando segurança..."));
+      const { data: sec, error: secErr } = await supabaseBrowser
+        .from("user_security")
+        .select("password_set")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (secErr) {
+        // Se falhar por RLS/migração, por segurança manda pra login (evita liberar sem verificar)
+        console.error("Erro ao checar user_security:", secErr.message);
+        router.replace("/login");
+        return;
+      }
+
+      if (!sec?.password_set) {
+        router.replace("/set-password");
+        return;
+      }
+
+      safeSet(() => {
+        setAuthChecked(true);
+        setAuthStatus("OK");
+      });
+    };
+
+    checkGate();
+
+    const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+      // Se mudou auth, revalida gate
+      if (!session?.user) {
+        router.replace("/login");
+        return;
+      }
+      checkGate();
     });
 
     return () => {
+      cancelled = true;
       sub.subscription.unsubscribe();
     };
   }, [router]);
 
+  // ===== Hydration localStorage (só depois do gate) =====
   useEffect(() => {
     if (!authChecked) return;
 
     const fromStorage = loadPlantsFromStorage();
     if (fromStorage) setPlants(fromStorage);
     else setPlants(INITIAL_PLANTS);
+
     setHydrated(true);
   }, [authChecked]);
 
@@ -333,7 +381,7 @@ export default function Home() {
   }, [plants, hydrated]);
 
   async function logout() {
-    await supabase.auth.signOut();
+    await supabaseBrowser.auth.signOut();
     router.replace("/login");
   }
 
@@ -505,7 +553,7 @@ export default function Home() {
   if (!authChecked) {
     return (
       <main style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
-        <p>Verificando login...</p>
+        <p>{authStatus}</p>
       </main>
     );
   }
@@ -524,7 +572,15 @@ export default function Home() {
           <p>Carregando...</p>
         ) : (
           <>
-            <header style={{ marginBottom: "1.2rem", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
+            <header
+              style={{
+                marginBottom: "1.2rem",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "start",
+              }}
+            >
               <div>
                 <h1 style={{ margin: 0 }}>🌱 PlantaCheck</h1>
                 <p style={{ marginTop: 8, color: "#444" }}>

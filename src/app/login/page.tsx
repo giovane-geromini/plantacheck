@@ -1,255 +1,305 @@
-// src/app/login/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
-type Mode = "magic" | "password";
+type Mode = "first" | "password";
 
 export default function LoginPage() {
   const router = useRouter();
-
-  const [mounted, setMounted] = useState(false);
-
   const [mode, setMode] = useState<Mode>("password");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
-  const [redirectTo, setRedirectTo] = useState(""); // ✅ sempre definido após mount
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    setMounted(true);
-    // ✅ define o redirect só no client
-    setRedirectTo(`${window.location.origin}/auth/callback`);
-  }, []);
+    let cancelled = false;
 
-  async function sendMagicLink() {
-    setLoading(true);
+    const safeSet = (fn: () => void) => {
+      if (!cancelled) fn();
+    };
+
+    const check = async () => {
+      // Se já estiver logado, checa tabela e manda pro lugar certo
+      const { data, error } = await supabaseBrowser.auth.getSession();
+      if (error) return;
+
+      const user = data.session?.user;
+      if (!user) return;
+
+      safeSet(() => setMsg("Você já está logado. Checando acesso..."));
+
+      const { data: sec, error: secErr } = await supabaseBrowser
+        .from("user_security")
+        .select("password_set")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!secErr && sec?.password_set) {
+        router.replace("/");
+        return;
+      }
+
+      // Se não existe ou password_set = false, manda definir senha
+      router.replace("/set-password");
+    };
+
+    check();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  async function sendMagicLink(e: React.FormEvent) {
+    e.preventDefault();
     setErr(null);
     setMsg(null);
 
+    if (!email.trim()) {
+      setErr("Digite seu e-mail.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const cleanEmail = email.trim().toLowerCase();
-      if (!cleanEmail) throw new Error("Digite seu e-mail.");
-
-      if (!redirectTo) {
-        throw new Error("Redirect ainda não está pronto. Recarregue a página e tente novamente.");
-      }
-
-      // ✅ ajuda a debugar: confira no console qual redirect está indo pro Supabase
-      console.log("[PlantaCheck] emailRedirectTo =", redirectTo);
+      const redirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback`
+          : undefined;
 
       const { error } = await supabaseBrowser.auth.signInWithOtp({
-        email: cleanEmail,
-        options: { emailRedirectTo: redirectTo },
+        email: email.trim(),
+        options: {
+          emailRedirectTo: redirectTo,
+        },
       });
 
       if (error) throw error;
 
-      setMsg("Magic link enviado! Abra seu e-mail e clique no link para entrar.");
+      setMsg("Link enviado! Verifique seu e-mail (caixa de entrada e spam).");
     } catch (e: any) {
-      setErr(e?.message ?? "Erro ao enviar magic link.");
+      setErr(e?.message ?? "Erro ao enviar link.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function signInWithPassword() {
-    setLoading(true);
+  async function signInWithPassword(e: React.FormEvent) {
+    e.preventDefault();
     setErr(null);
     setMsg(null);
 
-    try {
-      const cleanEmail = email.trim().toLowerCase();
-      if (!cleanEmail) throw new Error("Digite seu e-mail.");
-      if (!password) throw new Error("Digite sua senha.");
+    if (!email.trim() || !password) {
+      setErr("Informe e-mail e senha.");
+      return;
+    }
 
-      const { error } = await supabaseBrowser.auth.signInWithPassword({
-        email: cleanEmail,
+    setLoading(true);
+    try {
+      const { data, error } = await supabaseBrowser.auth.signInWithPassword({
+        email: email.trim(),
         password,
       });
-
       if (error) throw error;
 
-      router.replace("/");
+      const user = data.user;
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+
+      // Quem manda é a tabela user_security
+      const { data: sec, error: secErr } = await supabaseBrowser
+        .from("user_security")
+        .select("password_set")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      // Se der erro aqui por RLS, melhor não liberar.
+      if (secErr) throw secErr;
+
+      router.replace(sec?.password_set ? "/" : "/set-password");
     } catch (e: any) {
-      setErr(e?.message ?? "Erro ao entrar com senha.");
+      setErr(e?.message ?? "Falha no login.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function signUpWithPasswordDev() {
-    setLoading(true);
+  async function forgotPassword() {
     setErr(null);
     setMsg(null);
 
+    if (!email.trim()) {
+      setErr("Digite seu e-mail para receber o link de redefinição.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const cleanEmail = email.trim().toLowerCase();
-      if (!cleanEmail) throw new Error("Digite seu e-mail.");
-      if (!password || password.length < 6) {
-        throw new Error("Defina uma senha com no mínimo 6 caracteres.");
-      }
+      const redirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/reset-password`
+          : undefined;
 
-      if (!redirectTo) {
-        throw new Error("Redirect ainda não está pronto. Recarregue a página e tente novamente.");
-      }
-
-      console.log("[PlantaCheck] emailRedirectTo (signUp) =", redirectTo);
-
-      const { data, error } = await supabaseBrowser.auth.signUp({
-        email: cleanEmail,
-        password,
-        options: { emailRedirectTo: redirectTo },
+      const { error } = await supabaseBrowser.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo,
       });
 
       if (error) throw error;
 
-      if (data.session) {
-        setMsg("Conta criada e logado! Indo para o app...");
-        router.replace("/");
-      } else {
-        setMsg("Conta criada! Se a confirmação de e-mail estiver ativa, confirme no e-mail para entrar.");
-      }
+      setMsg("Link de redefinição enviado! Verifique seu e-mail.");
     } catch (e: any) {
-      setErr(e?.message ?? "Erro ao criar conta.");
+      setErr(e?.message ?? "Erro ao enviar redefinição.");
     } finally {
       setLoading(false);
     }
   }
-
-  // ✅ Placeholder SSR-safe (sempre igual)
-  const Shell = (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-xl border bg-white p-5 shadow-sm">
-        <h1 className="text-xl font-semibold">Entrar no PlantaCheck</h1>
-        <p className="text-sm text-gray-600 mt-1">Carregando…</p>
-      </div>
-    </div>
-  );
 
   return (
-    // ✅ “aceita” diferenças caso algum layout/cache force HTML diferente
-    <div suppressHydrationWarning>
-      {!mounted ? (
-        Shell
+    <main style={{ maxWidth: 420, margin: "40px auto", padding: 16 }}>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>PlantaCheck</h1>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button
+          type="button"
+          onClick={() => setMode("password")}
+          style={{
+            flex: 1,
+            padding: 10,
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            background: mode === "password" ? "#f5f5f5" : "white",
+            cursor: "pointer",
+            fontWeight: 600,
+          }}
+        >
+          Entrar (Senha)
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("first")}
+          style={{
+            flex: 1,
+            padding: 10,
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            background: mode === "first" ? "#f5f5f5" : "white",
+            cursor: "pointer",
+            fontWeight: 600,
+          }}
+        >
+          Primeiro acesso (Link)
+        </button>
+      </div>
+
+      {mode === "first" ? (
+        <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 10 }}>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>E-mail</span>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              placeholder="seuemail@exemplo.com"
+              style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+              autoComplete="email"
+              disabled={loading}
+            />
+          </label>
+
+          <button
+            disabled={loading}
+            style={{
+              padding: 12,
+              borderRadius: 10,
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {loading ? "Enviando..." : "Enviar Magic Link"}
+          </button>
+
+          <p style={{ opacity: 0.8, fontSize: 13, lineHeight: 1.4 }}>
+            Você vai receber um link para entrar. Ao entrar pela primeira vez, vamos pedir para você definir uma senha.
+          </p>
+        </form>
       ) : (
-        <div className="min-h-screen flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-xl border bg-white p-5 shadow-sm">
-            <h1 className="text-xl font-semibold">Entrar no PlantaCheck</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Primeiro acesso por magic link. Depois, login normal por e-mail + senha.
-            </p>
+        <form onSubmit={signInWithPassword} style={{ display: "grid", gap: 10 }}>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>E-mail</span>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              placeholder="seuemail@exemplo.com"
+              style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+              autoComplete="email"
+              disabled={loading}
+            />
+          </label>
 
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setMode("password")}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
-                  mode === "password" ? "bg-gray-100 font-medium" : "bg-white"
-                }`}
-              >
-                Entrar com senha
-              </button>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Senha</span>
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              placeholder="Sua senha"
+              style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+              autoComplete="current-password"
+              disabled={loading}
+            />
+          </label>
 
-              <button
-                type="button"
-                onClick={() => setMode("magic")}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
-                  mode === "magic" ? "bg-gray-100 font-medium" : "bg-white"
-                }`}
-              >
-                Primeiro acesso (magic link)
-              </button>
-            </div>
+          <button
+            disabled={loading}
+            style={{
+              padding: 12,
+              borderRadius: 10,
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {loading ? "Entrando..." : "Entrar"}
+          </button>
 
-            <div className="mt-4">
-              <label className="text-sm font-medium">E-mail</label>
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seuemail@exemplo.com"
-                className="mt-1 w-full rounded-lg border px-3 py-2"
-                autoComplete="email"
-              />
-            </div>
+          <button
+            type="button"
+            onClick={forgotPassword}
+            disabled={loading}
+            style={{
+              padding: 10,
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "white",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            Esqueci minha senha
+          </button>
+        </form>
+      )}
 
-            {mode === "password" && (
-              <div className="mt-3">
-                <label className="text-sm font-medium">Senha</label>
-                <input
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="mt-1 w-full rounded-lg border px-3 py-2"
-                  type="password"
-                  autoComplete="current-password"
-                />
-              </div>
-            )}
-
-            {err && (
-              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {err}
-              </div>
-            )}
-
-            {msg && (
-              <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-                {msg}
-              </div>
-            )}
-
-            <div className="mt-4">
-              {mode === "magic" ? (
-                <button
-                  type="button"
-                  onClick={sendMagicLink}
-                  disabled={loading}
-                  className="w-full rounded-lg bg-black px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                >
-                  {loading ? "Enviando..." : "Enviar magic link"}
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={signInWithPassword}
-                    disabled={loading}
-                    className="w-full rounded-lg bg-black px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                  >
-                    {loading ? "Entrando..." : "Entrar"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={signUpWithPasswordDev}
-                    disabled={loading}
-                    className="mt-2 w-full rounded-lg border px-3 py-2 text-sm disabled:opacity-60"
-                    title="Apenas para testes em desenvolvimento"
-                  >
-                    {loading ? "Criando..." : "Criar conta (DEV) com senha"}
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div className="mt-4 text-xs text-gray-500">
-              Se você nunca definiu senha, use <b>Primeiro acesso (magic link)</b>.
-            </div>
-
-            {/* Debug leve (opcional): você pode remover depois */}
-            <div className="mt-3 text-[11px] text-gray-400 break-all">
-              redirect: {redirectTo || "(carregando...)"}
-            </div>
-          </div>
+      {err && (
+        <div style={{ marginTop: 14, padding: 10, borderRadius: 10, background: "#ffe9e9" }}>
+          {err}
         </div>
       )}
-    </div>
+      {msg && (
+        <div style={{ marginTop: 14, padding: 10, borderRadius: 10, background: "#e9fff0" }}>
+          {msg}
+        </div>
+      )}
+    </main>
   );
 }
