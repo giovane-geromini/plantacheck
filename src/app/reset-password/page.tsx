@@ -1,6 +1,7 @@
+// src/app/reset-password/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
@@ -10,7 +11,7 @@ function parseHashParams() {
   return new URLSearchParams(hash);
 }
 
-export default function ResetPasswordPage() {
+function ResetPasswordInner() {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -183,5 +184,22 @@ export default function ResetPasswordPage() {
         {msg && <div className="mt-3 rounded-lg bg-green-50 p-3 text-sm text-green-700">{msg}</div>}
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center p-6">
+          <div className="w-full max-w-md rounded-xl border bg-white p-5 shadow-sm">
+            <h1 className="text-lg font-semibold">Redefinir senha</h1>
+            <p className="mt-2 text-sm text-gray-600">Carregando…</p>
+          </div>
+        </div>
+      }
+    >
+      <ResetPasswordInner />
+    </Suspense>
   );
 }
