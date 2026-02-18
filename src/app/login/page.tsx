@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import InstallPwaButton from "@/components/InstallPwaButton";
+
+// ...
+<InstallPwaButton />
 
 type Mode = "first" | "password";
 
@@ -25,7 +29,6 @@ export default function LoginPage() {
     };
 
     const check = async () => {
-      // Se já estiver logado, checa tabela e manda pro lugar certo
       const { data, error } = await supabaseBrowser.auth.getSession();
       if (error) return;
 
@@ -45,7 +48,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Se não existe ou password_set = false, manda definir senha
       router.replace("/set-password");
     };
 
@@ -69,15 +71,11 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const redirectTo =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/auth/callback`
-          : undefined;
+        typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
 
       const { error } = await supabaseBrowser.auth.signInWithOtp({
         email: email.trim(),
-        options: {
-          emailRedirectTo: redirectTo,
-        },
+        options: { emailRedirectTo: redirectTo },
       });
 
       if (error) throw error;
@@ -114,14 +112,12 @@ export default function LoginPage() {
         return;
       }
 
-      // Quem manda é a tabela user_security
       const { data: sec, error: secErr } = await supabaseBrowser
         .from("user_security")
         .select("password_set")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      // Se der erro aqui por RLS, melhor não liberar.
       if (secErr) throw secErr;
 
       router.replace(sec?.password_set ? "/" : "/set-password");
@@ -144,9 +140,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const redirectTo =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/reset-password`
-          : undefined;
+        typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined;
 
       const { error } = await supabaseBrowser.auth.resetPasswordForEmail(email.trim(), {
         redirectTo,
@@ -162,144 +156,200 @@ export default function LoginPage() {
     }
   }
 
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    border: "1px solid #d7dbe0",
+    background: active ? "#eef2f6" : "#fff",
+    cursor: "pointer",
+    fontWeight: 800,
+    color: "#111",
+  });
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    height: 44,
+    borderRadius: 12,
+    border: "1px solid #d7dbe0",
+    padding: "0 12px",
+    background: "#fff",
+    color: "#111",
+    outline: "none",
+  };
+
+  const primaryBtn: React.CSSProperties = {
+    width: "100%",
+    height: 46,
+    borderRadius: 12,
+    border: "none",
+    background: "#111",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: "pointer",
+    opacity: loading ? 0.7 : 1,
+  };
+
+  const secondaryBtn: React.CSSProperties = {
+    width: "100%",
+    height: 44,
+    borderRadius: 12,
+    border: "1px solid #d7dbe0",
+    background: "#fff",
+    color: "#111",
+    fontWeight: 800,
+    cursor: "pointer",
+    opacity: loading ? 0.7 : 1,
+  };
+
   return (
-    <main style={{ maxWidth: 420, margin: "40px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>PlantaCheck</h1>
+    <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 18 }}>
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 460,
+          background: "#fff",
+          border: "1px solid #e6e8eb",
+          borderRadius: 16,
+          padding: 18,
+          boxShadow: "0 10px 28px rgba(0,0,0,0.06)",
+        }}
+      >
+        {/* Header / Marca */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 14,
+              background: "#e9fff0",
+              display: "grid",
+              placeItems: "center",
+              border: "1px solid #cfe9d7",
+              fontSize: 22,
+            }}
+            aria-hidden
+          >
+            🌿
+          </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <button
-          type="button"
-          onClick={() => setMode("password")}
-          style={{
-            flex: 1,
-            padding: 10,
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: mode === "password" ? "#f5f5f5" : "white",
-            cursor: "pointer",
-            fontWeight: 600,
-          }}
-        >
-          Entrar (Senha)
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("first")}
-          style={{
-            flex: 1,
-            padding: 10,
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: mode === "first" ? "#f5f5f5" : "white",
-            cursor: "pointer",
-            fontWeight: 600,
-          }}
-        >
-          Primeiro acesso (Link)
-        </button>
+          <div style={{ lineHeight: 1.1 }}>
+            <div style={{ fontSize: 20, fontWeight: 950, color: "#111" }}>PlantaCheck</div>
+            <div style={{ fontSize: 13, color: "#4b5563", marginTop: 4 }}>
+              Controle inteligente para plantas saudáveis
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          <button type="button" onClick={() => setMode("password")} style={tabStyle(mode === "password")}>
+            Entrar (Senha)
+          </button>
+          <button type="button" onClick={() => setMode("first")} style={tabStyle(mode === "first")}>
+            Primeiro acesso (Link)
+          </button>
+        </div>
+
+        {/* Instalar (inline) */}
+        <div style={{ marginBottom: 12 }}>
+          <InstallPwaButton inline />
+        </div>
+
+        {mode === "first" ? (
+          <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 10 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#111" }}>E-mail</span>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                placeholder="seuemail@exemplo.com"
+                style={inputStyle}
+                autoComplete="email"
+                disabled={loading}
+              />
+            </label>
+
+            <button disabled={loading} style={primaryBtn}>
+              {loading ? "Enviando..." : "Enviar Magic Link"}
+            </button>
+
+            <p style={{ opacity: 0.85, fontSize: 13, lineHeight: 1.45, color: "#374151" }}>
+              Você vai receber um link para entrar. No primeiro acesso, vamos pedir para definir uma senha.
+            </p>
+          </form>
+        ) : (
+          <form onSubmit={signInWithPassword} style={{ display: "grid", gap: 10 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#111" }}>E-mail</span>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                placeholder="seuemail@exemplo.com"
+                style={inputStyle}
+                autoComplete="email"
+                disabled={loading}
+              />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#111" }}>Senha</span>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                placeholder="Sua senha"
+                style={inputStyle}
+                autoComplete="current-password"
+                disabled={loading}
+              />
+            </label>
+
+            <button disabled={loading} style={primaryBtn}>
+              {loading ? "Entrando..." : "Entrar"}
+            </button>
+
+            <button type="button" onClick={forgotPassword} disabled={loading} style={secondaryBtn}>
+              Esqueci minha senha
+            </button>
+          </form>
+        )}
+
+        {err && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: 12,
+              borderRadius: 12,
+              background: "#ffe9e9",
+              border: "1px solid #ffd0d0",
+              color: "#7a1b1b",
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            {err}
+          </div>
+        )}
+        {msg && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: 12,
+              borderRadius: 12,
+              background: "#e9fff0",
+              border: "1px solid #cfe9d7",
+              color: "#14532d",
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            {msg}
+          </div>
+        )}
       </div>
-
-      {mode === "first" ? (
-        <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 10 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span>E-mail</span>
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              placeholder="seuemail@exemplo.com"
-              style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
-              autoComplete="email"
-              disabled={loading}
-            />
-          </label>
-
-          <button
-            disabled={loading}
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              border: "none",
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            {loading ? "Enviando..." : "Enviar Magic Link"}
-          </button>
-
-          <p style={{ opacity: 0.8, fontSize: 13, lineHeight: 1.4 }}>
-            Você vai receber um link para entrar. Ao entrar pela primeira vez, vamos pedir para você definir uma senha.
-          </p>
-        </form>
-      ) : (
-        <form onSubmit={signInWithPassword} style={{ display: "grid", gap: 10 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span>E-mail</span>
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              placeholder="seuemail@exemplo.com"
-              style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
-              autoComplete="email"
-              disabled={loading}
-            />
-          </label>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            <span>Senha</span>
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              placeholder="Sua senha"
-              style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
-              autoComplete="current-password"
-              disabled={loading}
-            />
-          </label>
-
-          <button
-            disabled={loading}
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              border: "none",
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            {loading ? "Entrando..." : "Entrar"}
-          </button>
-
-          <button
-            type="button"
-            onClick={forgotPassword}
-            disabled={loading}
-            style={{
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "white",
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            Esqueci minha senha
-          </button>
-        </form>
-      )}
-
-      {err && (
-        <div style={{ marginTop: 14, padding: 10, borderRadius: 10, background: "#ffe9e9" }}>
-          {err}
-        </div>
-      )}
-      {msg && (
-        <div style={{ marginTop: 14, padding: 10, borderRadius: 10, background: "#e9fff0" }}>
-          {msg}
-        </div>
-      )}
     </main>
   );
 }

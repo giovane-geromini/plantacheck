@@ -40,3 +40,14 @@ a {
     color-scheme: dark;
   }
 }
+
+/* ===== PlantaCheck: base visual estável (evita modo escuro quebrar) ===== */
+:root {
+  color-scheme: light; /* impede o browser de "forçar" dark automaticamente */
+}
+
+html,
+body {
+  background: #f6f7f9;
+  color: #111;
+}

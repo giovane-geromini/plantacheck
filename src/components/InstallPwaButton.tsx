@@ -13,14 +13,16 @@ function isInStandaloneMode() {
   return Boolean(isStandaloneDisplay || isIOSStandalone);
 }
 
-function isSecureContextForPWA() {
-  if (typeof window === "undefined") return false;
-  if (window.isSecureContext) return true;
-  const host = window.location.hostname;
-  return host === "localhost" || host === "127.0.0.1";
-}
+type Props = {
+  /** true = botão dentro do card (largura 100%). false = botão flutuante. */
+  inline?: boolean;
+  /** opcional: esconder o botão flutuante em páginas específicas */
+  forceHide?: boolean;
+};
 
-export default function InstallPwaButton() {
+export default function InstallPwaButton({ inline = false, forceHide = false }: Props) {
+  const [mounted, setMounted] = useState(false);
+
   const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -41,6 +43,9 @@ export default function InstallPwaButton() {
   }, []);
 
   useEffect(() => {
+    setMounted(true);
+
+    // Só calcula isso no client pra não dar mismatch
     setInstalled(isInStandaloneMode());
 
     const mm = window.matchMedia?.("(display-mode: standalone)");
@@ -48,7 +53,7 @@ export default function InstallPwaButton() {
     mm?.addEventListener?.("change", onDisplayModeChange);
 
     const onBeforeInstall = (e: Event) => {
-      if (!isSecureContextForPWA()) return;
+      // Android/Chrome dispara esse evento quando o app é "instalável"
       e.preventDefault();
       setPromptEvent(e as BeforeInstallPromptEvent);
     };
@@ -70,11 +75,17 @@ export default function InstallPwaButton() {
     };
   }, []);
 
-  if (!canShowInstallUI || installed) return null;
+  // Evita hydration mismatch: no SSR sempre renderiza null
+  if (!mounted) return null;
+
+  if (forceHide) return null;
+  if (!canShowInstallUI) return null;
+  if (installed) return null;
 
   const canPrompt = Boolean(promptEvent);
 
   async function handleInstall() {
+    // Se existir o prompt do navegador (Android/Chrome), instala de verdade
     if (promptEvent) {
       try {
         await promptEvent.prompt();
@@ -85,8 +96,8 @@ export default function InstallPwaButton() {
       return;
     }
 
+    // Sem prompt (iOS ou Android ainda não elegível) -> ajuda
     setShowHelp(true);
-
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
     hideTimerRef.current = window.setTimeout(() => setShowHelp(false), 12000);
   }
@@ -96,27 +107,41 @@ export default function InstallPwaButton() {
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
   }
 
+  // Estilos do botão
+  const buttonStyle: React.CSSProperties = inline
+    ? {
+        width: "100%",
+        height: 44,
+        borderRadius: 12,
+        border: "1px solid rgba(0,0,0,0.12)",
+        background: canPrompt ? "#2E7D32" : "#fff",
+        color: canPrompt ? "#fff" : "#111",
+        fontWeight: 800,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+      }
+    : {
+        position: "fixed",
+        bottom: 16,
+        right: 16,
+        padding: "12px 14px",
+        borderRadius: 12,
+        backgroundColor: canPrompt ? "#2E7D32" : "#ffffff",
+        color: canPrompt ? "#fff" : "#111",
+        fontWeight: 800,
+        border: "1px solid rgba(0,0,0,0.12)",
+        boxShadow: "0 8px 18px rgba(0,0,0,0.18)",
+        zIndex: 1000,
+        cursor: "pointer",
+      };
+
   return (
     <>
-      <button
-        onClick={handleInstall}
-        style={{
-          position: "fixed",
-          bottom: 16,
-          right: 16,
-          padding: "12px 14px",
-          borderRadius: 12,
-          backgroundColor: "#2E7D32",
-          color: "#fff",
-          fontWeight: 700,
-          border: "1px solid rgba(0,0,0,0.08)",
-          boxShadow: "0 8px 18px rgba(0,0,0,0.18)",
-          zIndex: 1000,
-          cursor: "pointer",
-        }}
-        title={canPrompt ? "Instalar PlantaCheck" : "Como instalar"}
-      >
-        📲 Instalar App
+      <button onClick={handleInstall} style={buttonStyle} title={canPrompt ? "Instalar PlantaCheck" : "Instalar app"}>
+        📲 <span>Instalar app</span>
       </button>
 
       {showHelp && (
@@ -125,9 +150,10 @@ export default function InstallPwaButton() {
           aria-label="Ajuda para instalar o app"
           style={{
             position: "fixed",
-            bottom: 72,
+            bottom: inline ? 120 : 72,
             right: 16,
-            maxWidth: 300,
+            left: inline ? 16 : "auto",
+            maxWidth: inline ? 520 : 320,
             padding: 12,
             borderRadius: 12,
             background: "white",
@@ -168,13 +194,13 @@ export default function InstallPwaButton() {
               <>
                 No <strong>Chrome</strong>: toque em <strong>⋮</strong> →{" "}
                 <strong>Adicionar à tela inicial</strong>.
-                {!isSecureContextForPWA() && (
-                  <div style={{ marginTop: 8, color: "#555" }}>
-                    Dica: a instalação automática costuma exigir <strong>HTTPS</strong>. (No seu domínio já é HTTPS.)
-                  </div>
-                )}
               </>
             )}
+            <div style={{ marginTop: 8, color: "#666" }}>
+              {canPrompt
+                ? "Seu navegador já permite instalação automática."
+                : "Se este botão não abriu o instalador automático, é porque o navegador ainda não liberou o prompt (ou você está no iOS)."}
+            </div>
           </div>
         </div>
       )}
