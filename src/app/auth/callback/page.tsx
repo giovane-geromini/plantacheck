@@ -1,6 +1,7 @@
+// src/app/auth/callback/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
@@ -12,7 +13,7 @@ function parseHashParams() {
   return new URLSearchParams(hash);
 }
 
-export default function AuthCallbackPage() {
+function AuthCallbackInner() {
   const router = useRouter();
   const sp = useSearchParams();
   const [status, setStatus] = useState("Iniciando callback...");
@@ -115,5 +116,22 @@ export default function AuthCallbackPage() {
         <p className="mt-2 text-sm text-gray-600">{status}</p>
       </div>
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center p-6">
+          <div className="w-full max-w-md rounded-xl border bg-white p-5 shadow-sm">
+            <h1 className="text-lg font-semibold">Confirmando login…</h1>
+            <p className="mt-2 text-sm text-gray-600">Carregando…</p>
+          </div>
+        </div>
+      }
+    >
+      <AuthCallbackInner />
+    </Suspense>
   );
 }
