@@ -1,6 +1,7 @@
+// src/app/layout.tsx
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import SwRegister from "./SwRegister";
+import ClientProviders from "./ClientProviders";
 
 export const metadata: Metadata = {
   title: "PlantaCheck",
@@ -14,9 +15,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
-      <body>
-        <SwRegister />
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <ClientProviders />
         {children}
       </body>
     </html>
