@@ -11,15 +11,19 @@ type Plant = {
   household_id: string;
   name: string;
   place: string | null;
-  sunlight: string | null;
-  watering_interval_days: number | null;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
+
+  // schema atual do seu banco (pode existir ou não, então tratamos como opcional)
+  frequency_days?: number | null;
+
+  // campos antigos podem existir, mas não dependemos deles aqui
+  created_at?: string;
+  updated_at?: string;
 };
 
 function getSupabaseClient(): any {
-  return typeof supabaseBrowser === "function" ? (supabaseBrowser as any)() : (supabaseBrowser as any);
+  return typeof supabaseBrowser === "function"
+    ? (supabaseBrowser as any)()
+    : (supabaseBrowser as any);
 }
 
 export default function PlantsPage() {
@@ -31,9 +35,7 @@ export default function PlantsPage() {
   // form
   const [name, setName] = useState("");
   const [place, setPlace] = useState("");
-  const [sunlight, setSunlight] = useState("");
-  const [intervalDays, setIntervalDays] = useState<string>("");
-  const [notes, setNotes] = useState("");
+  const [frequencyDays, setFrequencyDays] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
   async function loadAll() {
@@ -70,25 +72,40 @@ export default function PlantsPage() {
     const supabase = getSupabaseClient();
 
     if (!house) return;
+
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setErr("Informe o nome da planta.");
+      return;
+    }
 
     setErr(null);
     setSaving(true);
+
     try {
-      const intervalParsed =
-        intervalDays.trim() === "" ? null : Math.max(0, parseInt(intervalDays, 10));
+      const freq =
+        frequencyDays.trim() === ""
+          ? null
+          : Math.max(0, parseInt(frequencyDays.trim(), 10));
+
+      // ✅ IMPORTANTÍSSIMO:
+      // Inserimos SOMENTE colunas que existem no schema atual do seu plants.
+      // Pelo seu print, existem: household_id, name, place (e provavelmente frequency_days).
+      const payload: any = {
+        household_id: house.id,
+        name: trimmed,
+        place: place.trim() || null,
+      };
+
+      // só envia frequency_days se o usuário preencheu (e se existir no schema, funciona)
+      // se não existir no schema, o Supabase vai retornar erro e aí a gente ajusta.
+      if (Number.isFinite(freq as any)) {
+        payload.frequency_days = freq;
+      }
 
       const { data, error } = await supabase
         .from("plants")
-        .insert({
-          household_id: house.id,
-          name: trimmed,
-          place: place.trim() || null,
-          sunlight: sunlight.trim() || null,
-          watering_interval_days: Number.isFinite(intervalParsed as any) ? intervalParsed : null,
-          notes: notes.trim() || null,
-        })
+        .insert(payload)
         .select("*")
         .single();
 
@@ -98,9 +115,7 @@ export default function PlantsPage() {
 
       setName("");
       setPlace("");
-      setSunlight("");
-      setIntervalDays("");
-      setNotes("");
+      setFrequencyDays("");
     } catch (e: any) {
       setErr(e?.message ?? "Erro ao adicionar planta.");
     } finally {
@@ -113,8 +128,12 @@ export default function PlantsPage() {
 
     setErr(null);
     try {
+      const ok = window.confirm("Excluir esta planta?");
+      if (!ok) return;
+
       const { error } = await supabase.from("plants").delete().eq("id", id);
       if (error) throw error;
+
       setPlants((prev) => prev.filter((p) => p.id !== id));
     } catch (e: any) {
       setErr(e?.message ?? "Erro ao excluir planta.");
@@ -130,9 +149,15 @@ export default function PlantsPage() {
             Casa: <b>{house?.name ?? "..."}</b>
           </p>
         </div>
-        <Link className="text-sm underline" href="/house">
-          Editar casa
-        </Link>
+
+        <div className="flex items-center gap-3">
+          <Link className="text-sm underline" href="/dashboard">
+            Dashboard
+          </Link>
+          <Link className="text-sm underline" href="/house">
+            Casa
+          </Link>
+        </div>
       </div>
 
       {err && (
@@ -149,10 +174,10 @@ export default function PlantsPage() {
           className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Ex: Samambaia"
+          placeholder="Ex: Jiboia"
         />
 
-        <label className="mt-3 block text-xs font-medium">Local</label>
+        <label className="mt-3 block text-xs font-medium">Local (texto)</label>
         <input
           className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
           value={place}
@@ -160,30 +185,13 @@ export default function PlantsPage() {
           placeholder="Ex: Sala / Varanda"
         />
 
-        <label className="mt-3 block text-xs font-medium">Sol</label>
+        <label className="mt-3 block text-xs font-medium">Frequência (dias)</label>
         <input
           className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-          value={sunlight}
-          onChange={(e) => setSunlight(e.target.value)}
-          placeholder="Ex: Indireto / Manhã"
-        />
-
-        <label className="mt-3 block text-xs font-medium">Rega (dias)</label>
-        <input
-          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-          value={intervalDays}
-          onChange={(e) => setIntervalDays(e.target.value)}
+          value={frequencyDays}
+          onChange={(e) => setFrequencyDays(e.target.value)}
           inputMode="numeric"
           placeholder="Ex: 3"
-        />
-
-        <label className="mt-3 block text-xs font-medium">Notas</label>
-        <textarea
-          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Ex: gosta de borrifar água nas folhas"
-          rows={3}
         />
 
         <button
@@ -212,9 +220,8 @@ export default function PlantsPage() {
                   <p className="font-medium">{p.name}</p>
                   <p className="text-xs opacity-80">
                     {p.place ? `📍 ${p.place}` : "📍 (sem local)"}{" "}
-                    {p.watering_interval_days != null ? `• 💧 ${p.watering_interval_days}d` : ""}
+                    {p.frequency_days != null ? `• 💧 ${p.frequency_days}d` : ""}
                   </p>
-                  {p.sunlight && <p className="text-xs opacity-80 mt-1">☀️ {p.sunlight}</p>}
                 </div>
 
                 <button
@@ -225,16 +232,14 @@ export default function PlantsPage() {
                   Excluir
                 </button>
               </div>
-
-              {p.notes && <p className="mt-2 text-xs opacity-90">{p.notes}</p>}
             </div>
           ))}
         </div>
       </section>
 
       <div className="mt-6 flex gap-3">
-        <Link className="text-sm underline" href="/">
-          ← Início
+        <Link className="text-sm underline" href="/dashboard">
+          ← Dashboard
         </Link>
         <button className="text-sm underline" onClick={loadAll}>
           Recarregar
