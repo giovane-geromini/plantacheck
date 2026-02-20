@@ -115,7 +115,7 @@ function diffDaysIso(aIso: string, bIso: string) {
 }
 
 type StatusKey = "semFrequencia" | "primeiraRega" | "emDia" | "hoje" | "atrasada";
-type StatusInfo = { key: StatusKey; label: string; emoji: string };
+type StatusInfo = { key: StatusKey; label: string; emoji: string; pill: string };
 
 function normalizeFrequencyDays(p: DbPlant): number | null {
   const a = typeof p.frequency_days === "number" ? p.frequency_days : null;
@@ -139,7 +139,12 @@ function computeStatus(args: {
 
   if (!frequencyDays) {
     return {
-      status: { key: "semFrequencia", label: "Sem frequência", emoji: "⚪" },
+      status: {
+        key: "semFrequencia",
+        label: "Sem frequência",
+        emoji: "⚪",
+        pill: "bg-zinc-100 text-zinc-700 border-zinc-200",
+      },
       nextText: "Frequência: —",
       nextDateIso: null,
       deltaDays: null,
@@ -148,7 +153,12 @@ function computeStatus(args: {
 
   if (!lastWaterDateIso) {
     return {
-      status: { key: "primeiraRega", label: "Primeira rega", emoji: "🔵" },
+      status: {
+        key: "primeiraRega",
+        label: "Primeira rega",
+        emoji: "🔵",
+        pill: "bg-blue-50 text-blue-700 border-blue-200",
+      },
       nextText: `Frequência: a cada ${frequencyDays} dia(s) • Próxima: —`,
       nextDateIso: null,
       deltaDays: null,
@@ -160,15 +170,26 @@ function computeStatus(args: {
 
   if (delta < 0) {
     return {
-      status: { key: "atrasada", label: "Atrasada", emoji: "🔴" },
+      status: {
+        key: "atrasada",
+        label: "Atrasada",
+        emoji: "🔴",
+        pill: "bg-red-50 text-red-700 border-red-200",
+      },
       nextText: `Próxima: ${formatIsoToBrDate(nextIso)} • Atrasada há ${Math.abs(delta)} dia(s)`,
       nextDateIso: nextIso,
       deltaDays: delta,
     };
   }
+
   if (delta === 0) {
     return {
-      status: { key: "hoje", label: "Hoje", emoji: "🟡" },
+      status: {
+        key: "hoje",
+        label: "Hoje",
+        emoji: "🟡",
+        pill: "bg-amber-50 text-amber-800 border-amber-200",
+      },
       nextText: `Próxima: ${formatIsoToBrDate(nextIso)} • Hoje`,
       nextDateIso: nextIso,
       deltaDays: delta,
@@ -176,7 +197,12 @@ function computeStatus(args: {
   }
 
   return {
-    status: { key: "emDia", label: "Em dia", emoji: "🟢" },
+    status: {
+      key: "emDia",
+      label: "Em dia",
+      emoji: "🟢",
+      pill: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    },
     nextText: `Próxima: ${formatIsoToBrDate(nextIso)} • Faltam ${delta} dia(s)`,
     nextDateIso: nextIso,
     deltaDays: delta,
@@ -185,38 +211,13 @@ function computeStatus(args: {
 
 type Mode = "idle" | "waterBatch" | "sunBatch";
 
-type CardVM = {
-  plant: DbPlant;
-  freq: number | null;
-  placeLabel: string | null;
-  lastWaterDateIso: string | null;
-  lastWaterTime: string | null;
-  status: StatusInfo;
-  nextText: string;
-  nextDateIso: string | null;
-  deltaDays: number | null;
-};
-
-function statusPriority(k: StatusKey) {
-  // prioridade: atrasada -> hoje -> em dia -> primeira -> sem freq
-  if (k === "atrasada") return 0;
-  if (k === "hoje") return 1;
-  if (k === "emDia") return 2;
-  if (k === "primeiraRega") return 3;
-  return 4;
-}
-
-function statusPillClass(k: StatusKey) {
-  // sem cores agressivas; só “tons” via classes neutras
-  if (k === "atrasada") return "bg-red-50 border-red-200";
-  if (k === "hoje") return "bg-amber-50 border-amber-200";
-  if (k === "emDia") return "bg-emerald-50 border-emerald-200";
-  if (k === "primeiraRega") return "bg-sky-50 border-sky-200";
-  return "bg-zinc-50 border-zinc-200";
-}
-
 export default function DashboardPage() {
   const router = useRouter();
+
+  // ===== Auth gate =====
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authStatus, setAuthStatus] = useState("Verificando login...");
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const [house, setHouse] = useState<Household | null>(null);
 
@@ -232,7 +233,75 @@ export default function DashboardPage() {
   const [savingBatch, setSavingBatch] = useState(false);
 
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | StatusKey>("all");
+
+  // Gate principal: sessão + password_set
+  useEffect(() => {
+    let cancelled = false;
+
+    const safeSet = (fn: () => void) => {
+      if (!cancelled) fn();
+    };
+
+    const checkGate = async () => {
+      safeSet(() => {
+        setAuthChecked(false);
+        setAuthStatus("Verificando sessão...");
+      });
+
+      const { data, error } = await supabaseBrowser.auth.getSession();
+      if (error) {
+        router.replace("/login");
+        return;
+      }
+
+      const session = data.session;
+      if (!session?.user) {
+        router.replace("/login");
+        return;
+      }
+
+      const user = session.user;
+      safeSet(() => setUserEmail(user.email ?? null));
+
+      safeSet(() => setAuthStatus("Checando segurança..."));
+      const { data: sec, error: secErr } = await supabaseBrowser
+        .from("user_security")
+        .select("password_set")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (secErr) {
+        console.error("Erro ao checar user_security:", secErr.message);
+        router.replace("/login");
+        return;
+      }
+
+      if (!sec?.password_set) {
+        router.replace("/set-password");
+        return;
+      }
+
+      safeSet(() => {
+        setAuthChecked(true);
+        setAuthStatus("OK");
+      });
+    };
+
+    checkGate();
+
+    const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        router.replace("/login");
+        return;
+      }
+      checkGate();
+    });
+
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, [router]);
 
   async function logout() {
     await supabaseBrowser.auth.signOut();
@@ -283,9 +352,10 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    if (!authChecked) return;
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authChecked]);
 
   const placeNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -294,9 +364,7 @@ export default function DashboardPage() {
   }, [places]);
 
   const lastEventByPlantAndType = useMemo(() => {
-    // plant_id -> { water?: DbEvent, sun?: DbEvent }
     const map = new Map<string, { water?: DbEvent; sun?: DbEvent }>();
-    // events já vêm ordenados desc, então o primeiro encontrado é o mais recente
     for (const ev of events) {
       const cur = map.get(ev.plant_id) ?? {};
       if (ev.event_type === "water" && !cur.water) cur.water = ev;
@@ -308,8 +376,10 @@ export default function DashboardPage() {
 
   const todayIso = useMemo(() => nowInBrasiliaParts().dateIso, []);
 
-  const allCards: CardVM[] = useMemo(() => {
-    return plants.map((p) => {
+  const cards = useMemo(() => {
+    const q = query.trim().toLowerCase();
+
+    const out = plants.map((p) => {
       const freq = normalizeFrequencyDays(p);
 
       const lastWaterEvent = lastEventByPlantAndType.get(p.id)?.water;
@@ -325,6 +395,11 @@ export default function DashboardPage() {
         todayIso,
       });
 
+      const matchesQuery =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (placeLabel ?? "").toLowerCase().includes(q);
+
       return {
         plant: p,
         freq,
@@ -335,18 +410,41 @@ export default function DashboardPage() {
         nextText,
         nextDateIso,
         deltaDays,
+        matchesQuery,
       };
     });
-  }, [plants, lastEventByPlantAndType, placeNameById, todayIso]);
 
-  const summaryAll = useMemo(() => {
+    const priority = (k: StatusKey) => {
+      if (k === "atrasada") return 0;
+      if (k === "hoje") return 1;
+      if (k === "emDia") return 2;
+      if (k === "primeiraRega") return 3;
+      return 4;
+    };
+
+    return out
+      .filter((c) => c.matchesQuery)
+      .sort((a, b) => {
+        const pa = priority(a.status.key);
+        const pb = priority(b.status.key);
+        if (pa !== pb) return pa - pb;
+
+        if (a.deltaDays != null && b.deltaDays != null && a.deltaDays !== b.deltaDays) {
+          return a.deltaDays - b.deltaDays;
+        }
+
+        return a.plant.name.localeCompare(b.plant.name, "pt-BR");
+      });
+  }, [plants, placeNameById, lastEventByPlantAndType, query, todayIso]);
+
+  const summary = useMemo(() => {
     let atrasada = 0;
     let hoje = 0;
     let emDia = 0;
     let primeira = 0;
     let semFreq = 0;
 
-    for (const c of allCards) {
+    for (const c of cards) {
       if (c.status.key === "atrasada") atrasada++;
       else if (c.status.key === "hoje") hoje++;
       else if (c.status.key === "emDia") emDia++;
@@ -354,38 +452,12 @@ export default function DashboardPage() {
       else semFreq++;
     }
 
-    return { atrasada, hoje, emDia, primeira, semFreq, total: allCards.length };
-  }, [allCards]);
+    return { atrasada, hoje, emDia, primeira, semFreq, total: cards.length };
+  }, [cards]);
 
-  const filteredCards = useMemo(() => {
-    const q = query.trim().toLowerCase();
-
-    const filtered = allCards.filter((c) => {
-      const matchesQuery =
-        !q ||
-        c.plant.name.toLowerCase().includes(q) ||
-        (c.placeLabel ?? "").toLowerCase().includes(q);
-
-      const matchesStatus = statusFilter === "all" ? true : c.status.key === statusFilter;
-
-      return matchesQuery && matchesStatus;
-    });
-
-    return filtered.sort((a, b) => {
-      const pa = statusPriority(a.status.key);
-      const pb = statusPriority(b.status.key);
-      if (pa !== pb) return pa - pb;
-
-      // dentro do grupo: mais atrasada primeiro (deltaDays mais negativo)
-      if (a.deltaDays != null && b.deltaDays != null && a.deltaDays !== b.deltaDays) {
-        return a.deltaDays - b.deltaDays;
-      }
-
-      return a.plant.name.localeCompare(b.plant.name, "pt-BR");
-    });
-  }, [allCards, query, statusFilter]);
-
-  const batchActive = mode !== "idle";
+  function toggleSelect(id: string) {
+    setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
 
   function clearSelection() {
     setSelected({});
@@ -401,31 +473,20 @@ export default function DashboardPage() {
     clearSelection();
   }
 
-  function toggleSelect(id: string) {
-    setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
-  }
-
-  const selectedIds = useMemo(
-    () => Object.entries(selected).filter(([, v]) => v).map(([k]) => k),
-    [selected]
-  );
-
-  function selectAllVisible() {
-    const next: Record<string, boolean> = {};
-    for (const c of filteredCards) next[c.plant.id] = true;
-    setSelected(next);
-  }
-
   async function confirmBatch() {
     if (!house) return;
 
-    if (selectedIds.length === 0) {
+    const ids = Object.entries(selected)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+
+    if (ids.length === 0) {
       alert("Selecione ao menos 1 planta.");
       return;
     }
 
     const ok = window.confirm(
-      `${mode === "waterBatch" ? "Registrar REGA" : "Registrar SOL"} para ${selectedIds.length} planta(s)?`
+      `${mode === "waterBatch" ? "Registrar REGA" : "Registrar SOL"} para ${ids.length} planta(s)?`
     );
     if (!ok) return;
 
@@ -438,7 +499,7 @@ export default function DashboardPage() {
 
       const { dateIso, timeBr } = nowInBrasiliaParts();
 
-      const payload = selectedIds.map((plantId) => ({
+      const payload = ids.map((plantId) => ({
         household_id: house.id,
         plant_id: plantId,
         event_type: mode === "waterBatch" ? "water" : "sun",
@@ -451,7 +512,6 @@ export default function DashboardPage() {
       const ins = await supabaseBrowser.from("events").insert(payload);
       if (ins.error) throw ins.error;
 
-      // reload events
       const eventsRes = await supabaseBrowser
         .from("events")
         .select("*")
@@ -472,270 +532,270 @@ export default function DashboardPage() {
     }
   }
 
-  function summaryButton(
-    key: "all" | StatusKey,
-    title: string,
-    count: number,
-    emoji: string
-  ) {
-    const active = statusFilter === key;
+  const batchActive = mode !== "idle";
+  const selectedCount = useMemo(
+    () => Object.values(selected).filter(Boolean).length,
+    [selected]
+  );
+
+  // ===== Tela enquanto valida login (resolve seu RLS no celular) =====
+  if (!authChecked) {
     return (
-      <button
-        onClick={() => setStatusFilter(key)}
-        className={[
-          "rounded-2xl border p-3 text-left transition",
-          active ? "bg-black text-white border-black" : "bg-white hover:bg-zinc-50",
-        ].join(" ")}
-        title={`Filtrar: ${title}`}
-      >
-        <div className={active ? "opacity-90 text-xs" : "opacity-70 text-xs"}>{emoji} {title}</div>
-        <div className="text-lg font-semibold">{count}</div>
-      </button>
+      <main className="min-h-dvh bg-zinc-50 p-4">
+        <div className="mx-auto max-w-md rounded-2xl border bg-white p-4">
+          <p className="text-sm">{authStatus}</p>
+        </div>
+      </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-5xl p-4">
-      {/* Topo estilo app */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold">🌱 Dashboard</h1>
-          <p className="text-sm opacity-80 mt-1 truncate">
-            Casa: <b>{house?.name ?? "..."}</b>
-          </p>
-          <p className="text-xs opacity-70 mt-1">
-            Eventos = fonte da verdade • Ordenação por prioridade
-          </p>
-        </div>
+    <main className="min-h-dvh bg-zinc-50 pb-24">
+      {/* Top bar */}
+      <div className="sticky top-0 z-10 border-b bg-white/90 backdrop-blur">
+        <div className="mx-auto max-w-md px-4 py-4 sm:max-w-2xl">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold leading-tight">🌱 Dashboard</h1>
+              <p className="mt-1 text-xs text-zinc-600">
+                Casa: <b className="text-zinc-900">{house?.name ?? "..."}</b>
+                {userEmail ? (
+                  <>
+                    {" "}
+                    • <span className="text-zinc-500">{userEmail}</span>
+                  </>
+                ) : null}
+              </p>
+            </div>
 
-        <div className="flex items-center gap-3">
-          <button onClick={loadAll} className="text-sm underline">
-            Recarregar
-          </button>
-          <button onClick={logout} className="text-sm underline">
-            Sair
-          </button>
-        </div>
-      </div>
-
-      {err && (
-        <div className="mt-4 rounded-xl border p-3 text-sm bg-white">
-          <b>Erro:</b> {err}
-        </div>
-      )}
-
-      {/* Resumo + filtro por status */}
-      <section className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-6">
-        {summaryButton("all", "Todas", summaryAll.total, "📌")}
-        {summaryButton("atrasada", "Atrasadas", summaryAll.atrasada, "🔴")}
-        {summaryButton("hoje", "Hoje", summaryAll.hoje, "🟡")}
-        {summaryButton("emDia", "Em dia", summaryAll.emDia, "🟢")}
-        {summaryButton("primeiraRega", "1ª rega", summaryAll.primeira, "🔵")}
-        {summaryButton("semFrequencia", "Sem freq.", summaryAll.semFreq, "⚪")}
-      </section>
-
-      {/* Ações globais */}
-      <section className="mt-4 rounded-2xl border p-4 bg-white">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold">Ações em lote</h2>
-            <p className="text-xs opacity-80 mt-1">
-              Selecione plantas e registre um evento (rega ou sol) de uma vez.
-            </p>
+            <div className="flex items-center gap-3">
+              <button onClick={loadAll} className="text-sm text-zinc-700 underline">
+                Recarregar
+              </button>
+              <button onClick={logout} className="text-sm text-zinc-700 underline">
+                Sair
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          {err && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <b>Erro:</b> {err}
+            </div>
+          )}
+
+          {/* Busca */}
+          <div className="mt-4">
+            <label className="block text-xs font-medium text-zinc-700">
+              Buscar (nome ou ambiente)
+            </label>
+            <input
+              className="mt-1 w-full rounded-2xl border bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-200"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ex: varanda, jiboia..."
+            />
+          </div>
+
+          {/* Resumo (chips) */}
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <div className="shrink-0 rounded-2xl border bg-white px-3 py-2 text-xs">
+              <div className="text-zinc-500">Total</div>
+              <div className="text-base font-semibold">{summary.total}</div>
+            </div>
+            <div className="shrink-0 rounded-2xl border bg-white px-3 py-2 text-xs">
+              <div className="text-zinc-500">🔴 Atrasadas</div>
+              <div className="text-base font-semibold">{summary.atrasada}</div>
+            </div>
+            <div className="shrink-0 rounded-2xl border bg-white px-3 py-2 text-xs">
+              <div className="text-zinc-500">🟡 Hoje</div>
+              <div className="text-base font-semibold">{summary.hoje}</div>
+            </div>
+            <div className="shrink-0 rounded-2xl border bg-white px-3 py-2 text-xs">
+              <div className="text-zinc-500">🟢 Em dia</div>
+              <div className="text-base font-semibold">{summary.emDia}</div>
+            </div>
+            <div className="shrink-0 rounded-2xl border bg-white px-3 py-2 text-xs">
+              <div className="text-zinc-500">🔵 1ª rega</div>
+              <div className="text-base font-semibold">{summary.primeira}</div>
+            </div>
+            <div className="shrink-0 rounded-2xl border bg-white px-3 py-2 text-xs">
+              <div className="text-zinc-500">⚪ Sem freq.</div>
+              <div className="text-base font-semibold">{summary.semFreq}</div>
+            </div>
+          </div>
+
+          {/* Ações em lote */}
+          <section className="mt-4 rounded-3xl border bg-white p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Ações em lote</h2>
+                <p className="mt-1 text-xs text-zinc-600">
+                  Selecione plantas e registre um evento de uma vez.
+                </p>
+              </div>
+              {batchActive && (
+                <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700">
+                  Selecionadas: <b>{selectedCount}</b>
+                </div>
+              )}
+            </div>
+
             {!batchActive ? (
-              <>
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   onClick={() => enterMode("waterBatch")}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50"
+                  className="rounded-2xl border bg-emerald-600 px-3 py-3 text-sm font-medium text-white"
                 >
-                  💧 Regar Agora
+                  💧 Regar agora
                 </button>
                 <button
                   onClick={() => enterMode("sunBatch")}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50"
+                  className="rounded-2xl border bg-amber-500 px-3 py-3 text-sm font-medium text-white"
                 >
-                  ☀️ Sol Agora
+                  ☀️ Sol agora
                 </button>
-              </>
+              </div>
             ) : (
-              <>
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   onClick={confirmBatch}
                   disabled={savingBatch}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50 disabled:opacity-60"
+                  className="rounded-2xl border bg-zinc-900 px-3 py-3 text-sm font-medium text-white disabled:opacity-60"
                 >
                   {savingBatch ? "Salvando..." : "✅ Confirmar"}
                 </button>
                 <button
                   onClick={cancelBatch}
                   disabled={savingBatch}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50 disabled:opacity-60"
+                  className="rounded-2xl border bg-white px-3 py-3 text-sm font-medium text-zinc-900 disabled:opacity-60"
                 >
                   ❌ Cancelar
                 </button>
-              </>
+              </div>
             )}
-          </div>
-        </div>
 
-        <div className="mt-3">
-          <label className="block text-xs font-medium">Buscar (nome ou ambiente)</label>
-          <input
-            className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ex: varanda, jiboia..."
-          />
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs opacity-80">
-          <div>
-            Exibindo <b>{filteredCards.length}</b> de <b>{summaryAll.total}</b>.
-            {batchActive && (
-              <>
-                {" "}
-                • Modo: <b>{mode === "waterBatch" ? "REGAR" : "SOL"}</b>
-                {" "}
-                • Selecionadas: <b>{selectedIds.length}</b>
-              </>
-            )}
-          </div>
-
-          {batchActive && (
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={selectAllVisible}
-                className="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
-                title="Selecionar todas as plantas que estão sendo exibidas"
-              >
-                Selecionar todas (visíveis)
-              </button>
-              <button
-                onClick={clearSelection}
-                className="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
-                title="Limpar seleção"
-              >
-                Limpar
-              </button>
+            <div className="mt-3 text-xs text-zinc-600">
+              Exibindo <b>{cards.length}</b> planta(s).
+              {batchActive ? (
+                <>
+                  {" "}
+                  • Modo: <b>{mode === "waterBatch" ? "REGAR" : "SOL"}</b>
+                </>
+              ) : null}
             </div>
-          )}
+          </section>
         </div>
-      </section>
+      </div>
 
-      {/* Lista de cards */}
-      <section className="mt-4">
-        {loading && <p className="text-sm">Carregando...</p>}
+      {/* Lista */}
+      <section className="mx-auto max-w-md px-4 pt-4 sm:max-w-2xl">
+        {loading && <p className="text-sm text-zinc-700">Carregando...</p>}
 
-        {!loading && filteredCards.length === 0 && (
-          <div className="rounded-2xl border p-4 text-sm bg-white">
-            Nenhuma planta encontrada com os filtros atuais.
+        {!loading && cards.length === 0 && (
+          <div className="rounded-3xl border bg-white p-4 text-sm text-zinc-700">
+            Nenhuma planta encontrada.
           </div>
         )}
 
         <div className="space-y-3">
-          {filteredCards.map((c) => {
+          {cards.map((c) => {
             const p = c.plant;
-
-            const lastLine = c.lastWaterDateIso
-              ? `💧 Última rega: ${formatIsoToBrDate(c.lastWaterDateIso)}${
-                  c.lastWaterTime ? ` às ${String(c.lastWaterTime).slice(0, 5)}` : ""
-                }`
-              : "💧 Última rega: —";
-
             const checked = Boolean(selected[p.id]);
 
+            const lastLine = c.lastWaterDateIso
+              ? `Última rega: ${formatIsoToBrDate(c.lastWaterDateIso)}${
+                  c.lastWaterTime ? ` às ${String(c.lastWaterTime).slice(0, 5)}` : ""
+                }`
+              : "Última rega: —";
+
             return (
-              <div
-                key={p.id}
-                className="rounded-2xl border bg-white p-4"
-                onClick={() => {
-                  // no modo lote, tocar no card também seleciona (mais fácil no celular)
-                  if (batchActive) toggleSelect(p.id);
-                }}
-                style={{ cursor: batchActive ? "pointer" : "default" }}
-              >
-                <div className="flex items-start justify-between gap-3">
+              <div key={p.id} className="rounded-3xl border bg-white p-4">
+                <div className="flex items-start gap-3">
+                  {batchActive ? (
+                    <button
+                      onClick={() => toggleSelect(p.id)}
+                      className={`mt-1 h-6 w-6 shrink-0 rounded-lg border ${
+                        checked ? "bg-zinc-900 border-zinc-900" : "bg-white"
+                      }`}
+                      aria-label={`Selecionar ${p.name}`}
+                      title="Selecionar"
+                    />
+                  ) : (
+                    <div className="mt-1 h-6 w-6 shrink-0 rounded-lg bg-emerald-50" />
+                  )}
+
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-start gap-3">
-                      {batchActive && (
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleSelect(p.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-1 h-5 w-5"
-                          aria-label={`Selecionar ${p.name}`}
-                        />
-                      )}
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-base font-semibold">{p.name}</p>
 
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold truncate">{p.name}</p>
-
-                          <span
-                            className={[
-                              "inline-flex items-center gap-2 rounded-full border px-2 py-1 text-xs",
-                              statusPillClass(c.status.key),
-                            ].join(" ")}
-                            title="Status"
-                          >
-                            <span>{c.status.emoji}</span>
-                            <b>{c.status.label}</b>
-                          </span>
-
-                          {c.freq ? (
-                            <span className="text-xs opacity-70">💧 {c.freq}d</span>
-                          ) : (
-                            <span className="text-xs opacity-60">💧 —</span>
-                          )}
-                        </div>
-
-                        <p className="text-xs opacity-80 mt-2">🗓️ {c.nextText}</p>
-                        <p className="text-xs opacity-80 mt-1">{lastLine}</p>
-                        <p className="text-xs opacity-80 mt-1">
-                          📍 {c.placeLabel ?? "(sem ambiente)"}
-                        </p>
-                      </div>
+                      <span
+                        className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium ${c.status.pill}`}
+                        title={c.status.label}
+                      >
+                        {c.status.emoji} {c.status.label}
+                      </span>
                     </div>
-                  </div>
 
-                  <div className="flex flex-col items-end gap-2">
-                    {!batchActive && (
-                      <Link className="text-xs underline opacity-80" href={`/planta/${p.id}`}>
+                    <p className="mt-2 text-xs text-zinc-600">🗓️ {c.nextText}</p>
+                    <p className="mt-1 text-xs text-zinc-600">💧 {lastLine}</p>
+
+                    <p className="mt-2 text-xs text-zinc-600">
+                      📍 {c.placeLabel ?? "(sem ambiente)"}{" "}
+                      {c.freq ? `• 💧 ${c.freq}d` : ""}
+                    </p>
+
+                    <div className="mt-3 flex items-center justify-between">
+                      <Link
+                        className="text-sm font-medium text-emerald-700 underline"
+                        href={`/planta/${p.id}`}
+                      >
                         Ver detalhes
                       </Link>
-                    )}
+
+                      {batchActive ? (
+                        <button
+                          onClick={() => toggleSelect(p.id)}
+                          className="rounded-2xl border px-3 py-2 text-xs"
+                        >
+                          {checked ? "Remover" : "Selecionar"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-
-                {!batchActive && (
-                  <div className="mt-3 flex items-center justify-between">
-                    <div className="text-xs opacity-60">
-                      Toque em “Regar Agora / Sol Agora” para selecionar em lote
-                    </div>
-                    <Link className="text-xs underline opacity-80" href={`/planta/${p.id}`}>
-                      Abrir →
-                    </Link>
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
       </section>
 
-      {/* Atalhos */}
-      <footer className="mt-6 flex flex-wrap gap-3 text-sm">
-        <Link className="underline" href="/plants">
-          Cadastro (lista simples)
-        </Link>
-        <Link className="underline" href="/house">
-          Casa
-        </Link>
-      </footer>
+      {/* Bottom nav (cara de app) */}
+      <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-white/90 backdrop-blur">
+        <div className="mx-auto grid max-w-md grid-cols-3 px-2 py-2 sm:max-w-2xl">
+          <Link
+            href="/dashboard"
+            className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs"
+          >
+            <span className="text-lg">🏠</span>
+            <span className="text-zinc-800">Dashboard</span>
+          </Link>
+          <Link
+            href="/plants"
+            className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs"
+          >
+            <span className="text-lg">🌿</span>
+            <span className="text-zinc-800">Plantas</span>
+          </Link>
+          <Link
+            href="/house"
+            className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs"
+          >
+            <span className="text-lg">🏡</span>
+            <span className="text-zinc-800">Casa</span>
+          </Link>
+        </div>
+      </nav>
     </main>
   );
 }
