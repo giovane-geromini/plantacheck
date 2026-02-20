@@ -24,28 +24,37 @@
   --pc-red-text: #7a1b1b;
   --pc-green-text: #14532d;
 
+  /* Altura “segura” do bottom nav (ajusta o respiro do conteúdo) */
+  --pc-bottomnav-safe: 96px;
+
   /* Evita o browser forçar dark */
   color-scheme: light;
 }
 
 html,
 body {
-  max-width: 100vw;
-  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
   background: var(--pc-bg);
   color: var(--pc-text);
 }
 
 body {
+  margin: 0;
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* evita que o conteúdo “encoste” no bottom nav */
+  padding-bottom: calc(env(safe-area-inset-bottom) + var(--pc-bottomnav-safe));
 }
 
 * {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
+  min-width: 0;
 }
 
 a {
@@ -56,15 +65,22 @@ a {
 /* ===== PlantaCheck UI Kit (igual ao login) ===== */
 
 .pc-page {
-  min-height: 100vh;
-  display: grid;
-  place-items: start center;
+  min-height: 100dvh;
+  width: 100%;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+
   padding: 18px;
+  overflow-x: clip;
 }
 
 .pc-container {
-  width: 100%;
-  max-width: 460px;
+  width: min(460px, 100%);
+  margin: 0 auto;
+  display: block;
 }
 
 .pc-card {
@@ -80,6 +96,7 @@ a {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .pc-between {
@@ -87,6 +104,7 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .pc-logo {
@@ -190,7 +208,7 @@ a {
   font-size: 13px;
 }
 
-/* chips simples */
+/* chips simples (base genérica, se quiser usar em outros lugares) */
 .pc-chip {
   display: inline-flex;
   align-items: center;
@@ -203,4 +221,69 @@ a {
   font-size: 13px;
   font-weight: 800;
   color: #111;
+}
+
+/* ===== Chips do Dashboard (responsivo, sem sobrepor) ===== */
+
+.pc-chips {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+
+  /* no mobile: 2 colunas */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* em telas maiores: 3 colunas (fica igual ao print do PC) */
+@media (min-width: 420px) {
+  .pc-chips {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.pc-chip-btn {
+  width: 100%;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid #d7dbe0;
+  background: #fff;
+  color: #111;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+
+  /* evita “sambar” no iOS/Android */
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pc-chip-btn.is-active {
+  border-color: #111;
+  background: #111;
+  color: #fff;
+}
+
+.pc-chip-count {
+  opacity: 0.75;
+  font-weight: 900;
+}
+
+.pc-chip-btn.is-active .pc-chip-count {
+  opacity: 0.9;
+}
+
+/* Pequeno ajuste para telas bem estreitas */
+@media (max-width: 420px) {
+  .pc-page {
+    padding: 14px;
+  }
+  .pc-card {
+    padding: 16px;
+  }
 }

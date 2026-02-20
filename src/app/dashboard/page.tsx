@@ -1,11 +1,11 @@
-// src/app/dashboard/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import { getOrCreateHousehold, type Household } from "@/lib/household";
+import AppCard from "@/components/AppCard";
 
 type DbPlant = {
   id: string;
@@ -89,7 +89,8 @@ function nowInBrasiliaParts() {
 }
 
 function formatIsoToBrDate(dateIso: string) {
-  const [y, m, d] = dateIso.split("-");
+  const [, m, d] = dateIso.split("-");
+  const y = dateIso.slice(0, 4);
   return `${d}/${m}/${y}`;
 }
 
@@ -166,6 +167,7 @@ function computeStatus(args: {
       deltaDays: delta,
     };
   }
+
   if (delta === 0) {
     return {
       status: { key: "hoje", label: "Hoje", emoji: "🟡" },
@@ -207,7 +209,6 @@ function statusPriority(k: StatusKey) {
 }
 
 function pillStyle(k: StatusKey): React.CSSProperties {
-  // tons suaves (igual vibe do login)
   const base: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
@@ -215,7 +216,9 @@ function pillStyle(k: StatusKey): React.CSSProperties {
     height: 30,
     padding: "0 10px",
     borderRadius: 999,
-    border: "1px solid var(--pc-border)",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#d7dbe0",
     background: "#fff",
     fontSize: 12,
     fontWeight: 900,
@@ -223,27 +226,70 @@ function pillStyle(k: StatusKey): React.CSSProperties {
     whiteSpace: "nowrap",
   };
 
-  if (k === "atrasada")
-    return { ...base, background: "#ffe9e9", borderColor: "var(--pc-red-border)", color: "var(--pc-red-text)" };
-  if (k === "hoje")
-    return { ...base, background: "#fff7e6", borderColor: "#ffe2a8", color: "#7a4b00" };
-  if (k === "emDia")
-    return { ...base, background: "var(--pc-green-bg)", borderColor: "var(--pc-green-border)", color: "var(--pc-green-text)" };
-  if (k === "primeiraRega")
-    return { ...base, background: "#eaf2ff", borderColor: "#cfe0ff", color: "#1e3a8a" };
+  if (k === "atrasada") return { ...base, background: "#ffe9e9", borderColor: "#ffd0d0", color: "#7a1b1b" };
+  if (k === "hoje") return { ...base, background: "#fff7e6", borderColor: "#ffe2a8", color: "#7a4b00" };
+  if (k === "emDia") return { ...base, background: "#e9fff0", borderColor: "#cfe9d7", color: "#14532d" };
+  if (k === "primeiraRega") return { ...base, background: "#eaf2ff", borderColor: "#cfe0ff", color: "#1e3a8a" };
 
-  return { ...base, background: "#f2f3f5", borderColor: "var(--pc-border-2)", color: "#374151" };
+  return { ...base, background: "#f2f3f5", borderColor: "#e6e8eb", color: "#374151" };
 }
 
-function smallLinkStyle(): React.CSSProperties {
-  return { fontSize: 13, fontWeight: 800, textDecoration: "underline" };
-}
+const linkSmall: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 800,
+  textDecoration: "underline",
+  color: "#111",
+};
+
+const label: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 800,
+  color: "#111",
+};
+
+const input: React.CSSProperties = {
+  width: "100%",
+  height: 44,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#d7dbe0",
+  padding: "0 12px",
+  background: "#fff",
+  color: "#111",
+  outline: "none",
+};
+
+const primaryBtn: React.CSSProperties = {
+  width: "100%",
+  height: 46,
+  borderRadius: 12,
+  border: "none",
+  background: "#111",
+  color: "#fff",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const secondaryBtn: React.CSSProperties = {
+  width: "100%",
+  height: 44,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#d7dbe0",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+type ChipProps = { id: "all" | StatusKey; label: string; emoji: string; count: number };
 
 export default function DashboardPage() {
   const router = useRouter();
 
   const [house, setHouse] = useState<Household | null>(null);
-
   const [plants, setPlants] = useState<DbPlant[]>([]);
   const [places, setPlaces] = useState<DbPlace[]>([]);
   const [events, setEvents] = useState<DbEvent[]>([]);
@@ -318,9 +364,7 @@ export default function DashboardPage() {
   }, [places]);
 
   const lastEventByPlantAndType = useMemo(() => {
-    // plant_id -> { water?: DbEvent, sun?: DbEvent }
     const map = new Map<string, { water?: DbEvent; sun?: DbEvent }>();
-    // events já vêm ordenados desc, então o primeiro encontrado é o mais recente
     for (const ev of events) {
       const cur = map.get(ev.plant_id) ?? {};
       if (ev.event_type === "water" && !cur.water) cur.water = ev;
@@ -386,9 +430,7 @@ export default function DashboardPage() {
 
     const filtered = allCards.filter((c) => {
       const matchesQuery =
-        !q ||
-        c.plant.name.toLowerCase().includes(q) ||
-        (c.placeLabel ?? "").toLowerCase().includes(q);
+        !q || c.plant.name.toLowerCase().includes(q) || (c.placeLabel ?? "").toLowerCase().includes(q);
 
       const matchesStatus = statusFilter === "all" ? true : c.status.key === statusFilter;
 
@@ -428,10 +470,7 @@ export default function DashboardPage() {
     setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
-  const selectedIds = useMemo(
-    () => Object.entries(selected).filter(([, v]) => v).map(([k]) => k),
-    [selected]
-  );
+  const selectedIds = useMemo(() => Object.entries(selected).filter(([, v]) => v).map(([k]) => k), [selected]);
 
   function selectAllVisible() {
     const next: Record<string, boolean> = {};
@@ -494,280 +533,281 @@ export default function DashboardPage() {
     }
   }
 
-  function FilterChip(props: {
-    id: "all" | StatusKey;
-    label: string;
-    emoji: string;
-    count: number;
-  }) {
+  function FilterChip(props: ChipProps) {
     const active = statusFilter === props.id;
 
-    const style: React.CSSProperties = active
-      ? {
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          height: 34,
-          padding: "0 12px",
-          borderRadius: 999,
-          border: "1px solid #111",
-          background: "#111",
-          color: "#fff",
-          fontSize: 13,
-          fontWeight: 900,
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        }
-      : {
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          height: 34,
-          padding: "0 12px",
-          borderRadius: 999,
-          border: "1px solid var(--pc-border)",
-          background: "#fff",
-          color: "#111",
-          fontSize: 13,
-          fontWeight: 900,
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        };
-
     return (
-      <button type="button" onClick={() => setStatusFilter(props.id)} style={style} title="Filtrar">
+      <button
+        type="button"
+        onClick={() => setStatusFilter(props.id)}
+        className={`pc-chip-btn ${active ? "is-active" : ""}`}
+        title="Filtrar"
+      >
         <span aria-hidden>{props.emoji}</span>
         <span>{props.label}</span>
-        <span style={{ opacity: active ? 0.9 : 0.75, fontWeight: 900 }}>({props.count})</span>
+        <span className="pc-chip-count">({props.count})</span>
       </button>
     );
   }
 
   return (
-    <main className="pc-page">
-      <div className="pc-container" style={{ display: "grid", gap: 12 }}>
-        {/* Header (igual ao login: logo + nome) */}
-        <div className="pc-card">
-          <div className="pc-between" style={{ alignItems: "flex-start" }}>
-            <div className="pc-row" style={{ alignItems: "flex-start" }}>
-              <div className="pc-logo" aria-hidden>
-                🌿
-              </div>
-              <div style={{ lineHeight: 1.1 }}>
-                <div className="pc-title">PlantaCheck</div>
-                <div className="pc-subtitle">
-                  Dashboard • Casa: <b>{house?.name ?? "..."}</b>
-                </div>
-              </div>
+    <AppCard title="PlantaCheck" subtitle={`Dashboard • Casa: ${house?.name ?? "..."}`} icon="🌿" maxWidth={460}>
+      {/* ações topo (links) */}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+        <button type="button" onClick={loadAll} style={linkSmall}>
+          Recarregar
+        </button>
+        <button type="button" onClick={logout} style={linkSmall}>
+          Sair
+        </button>
+      </div>
+
+      {err ? (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: 12,
+            borderRadius: 12,
+            background: "#ffe9e9",
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderColor: "#ffd0d0",
+            color: "#7a1b1b",
+            fontWeight: 800,
+            fontSize: 13,
+          }}
+        >
+          {err}
+        </div>
+      ) : null}
+
+      {/* busca */}
+      <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+        <div style={label}>Buscar (nome ou ambiente)</div>
+        <input
+          style={input}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Ex: varanda, jiboia..."
+        />
+      </div>
+
+      {/* chips (responsivos, quebram em linhas) */}
+      <div className="pc-chips">
+        <FilterChip id="all" label="Todas" emoji="📌" count={summaryAll.total} />
+        <FilterChip id="atrasada" label="Atrasadas" emoji="🔴" count={summaryAll.atrasada} />
+        <FilterChip id="hoje" label="Hoje" emoji="🟡" count={summaryAll.hoje} />
+        <FilterChip id="emDia" label="Em dia" emoji="🟢" count={summaryAll.emDia} />
+        <FilterChip id="primeiraRega" label="1ª rega" emoji="🔵" count={summaryAll.primeira} />
+        <FilterChip id="semFrequencia" label="Sem freq." emoji="⚪" count={summaryAll.semFreq} />
+      </div>
+
+      {/* Ações em lote */}
+      <AppCard noCenter style={{ padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 950, color: "#111" }}>Ações em lote</div>
+            <div style={{ fontSize: 13, color: "#4b5563", marginTop: 6 }}>
+              Selecione plantas e registre um evento (rega ou sol) de uma vez.
             </div>
+          </div>
 
-            <div className="pc-row" style={{ gap: 12 }}>
-              <button type="button" className="pc-btn-link" onClick={loadAll}>
-                Recarregar
-              </button>
-              <button type="button" className="pc-btn-link" onClick={logout}>
-                Sair
-              </button>
+          {batchActive ? (
+            <div
+              style={{
+                height: 32,
+                padding: "0 10px",
+                borderRadius: 999,
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderColor: "#e6e8eb",
+                background: "#f2f3f5",
+                display: "inline-flex",
+                alignItems: "center",
+                fontSize: 12,
+                fontWeight: 900,
+                color: "#111",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Selecionadas: <span style={{ marginLeft: 6 }}>{selectedIds.length}</span>
             </div>
-          </div>
-
-          {err && <div className="pc-alert-error">{err}</div>}
-
-          {/* Busca */}
-          <div style={{ marginTop: 14, display: "grid", gap: 6 }}>
-            <div className="pc-label">Buscar (nome ou ambiente)</div>
-            <input
-              className="pc-input"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ex: varanda, jiboia..."
-            />
-          </div>
-
-          {/* Chips de filtro (bonitinho e compacto) */}
-          <div style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
-            <FilterChip id="all" label="Todas" emoji="📌" count={summaryAll.total} />
-            <FilterChip id="atrasada" label="Atrasadas" emoji="🔴" count={summaryAll.atrasada} />
-            <FilterChip id="hoje" label="Hoje" emoji="🟡" count={summaryAll.hoje} />
-            <FilterChip id="emDia" label="Em dia" emoji="🟢" count={summaryAll.emDia} />
-            <FilterChip id="primeiraRega" label="1ª rega" emoji="🔵" count={summaryAll.primeira} />
-            <FilterChip id="semFrequencia" label="Sem freq." emoji="⚪" count={summaryAll.semFreq} />
-          </div>
+          ) : null}
         </div>
 
-        {/* Ações em lote (com botões iguais ao login) */}
-        <div className="pc-card">
-          <div className="pc-between" style={{ alignItems: "flex-start" }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 950, color: "#111" }}>Ações em lote</div>
-              <div className="pc-subtitle" style={{ marginTop: 6 }}>
-                Selecione plantas e registre um evento (rega ou sol) de uma vez.
-              </div>
-            </div>
-
-            {batchActive ? (
-              <div className="pc-chip" style={{ fontSize: 12 }}>
-                Selecionadas: <b>{selectedIds.length}</b>
-              </div>
-            ) : null}
-          </div>
-
-          {!batchActive ? (
-            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-              <button type="button" className="pc-btn-primary" onClick={() => enterMode("waterBatch")}>
-                💧 Regar Agora
-              </button>
-              <button type="button" className="pc-btn-secondary" onClick={() => enterMode("sunBatch")}>
-                ☀️ Sol Agora
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-              <button
-                type="button"
-                className="pc-btn-primary"
-                onClick={confirmBatch}
-                disabled={savingBatch}
-                style={{ opacity: savingBatch ? 0.7 : 1, cursor: savingBatch ? "not-allowed" : "pointer" }}
-              >
-                {savingBatch ? "Salvando..." : "✅ Confirmar"}
-              </button>
-
-              <button
-                type="button"
-                className="pc-btn-secondary"
-                onClick={cancelBatch}
-                disabled={savingBatch}
-                style={{ opacity: savingBatch ? 0.7 : 1, cursor: savingBatch ? "not-allowed" : "pointer" }}
-              >
-                ❌ Cancelar
-              </button>
-
-              <div className="pc-between" style={{ marginTop: 2 }}>
-                <button type="button" className="pc-btn-secondary" onClick={selectAllVisible}>
-                  Selecionar todas (visíveis)
-                </button>
-                <button type="button" className="pc-btn-secondary" onClick={clearSelection}>
-                  Limpar
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="pc-subtitle" style={{ marginTop: 12 }}>
-            Exibindo <b>{filteredCards.length}</b> de <b>{summaryAll.total}</b>.
-            {batchActive ? (
-              <>
-                {" "}
-                • Modo: <b>{mode === "waterBatch" ? "REGAR" : "SOL"}</b>
-              </>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Lista */}
-        {loading ? (
-          <div className="pc-card">
-            <div className="pc-subtitle">Carregando...</div>
-          </div>
-        ) : filteredCards.length === 0 ? (
-          <div className="pc-card">
-            <div className="pc-subtitle">Nenhuma planta encontrada com os filtros atuais.</div>
+        {!batchActive ? (
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            <button type="button" style={primaryBtn} onClick={() => enterMode("waterBatch")}>
+              💧 Regar Agora
+            </button>
+            <button type="button" style={secondaryBtn} onClick={() => enterMode("sunBatch")}>
+              ☀️ Sol Agora
+            </button>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 12 }}>
-            {filteredCards.map((c) => {
-              const p = c.plant;
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            <button
+              type="button"
+              style={{
+                ...primaryBtn,
+                opacity: savingBatch ? 0.7 : 1,
+                cursor: savingBatch ? "not-allowed" : "pointer",
+              }}
+              onClick={confirmBatch}
+              disabled={savingBatch}
+            >
+              {savingBatch ? "Salvando..." : "✅ Confirmar"}
+            </button>
 
-              const lastLine = c.lastWaterDateIso
-                ? `Última rega: ${formatIsoToBrDate(c.lastWaterDateIso)}${
-                    c.lastWaterTime ? ` às ${String(c.lastWaterTime).slice(0, 5)}` : ""
-                  }`
-                : "Última rega: —";
+            <button
+              type="button"
+              style={{
+                ...secondaryBtn,
+                opacity: savingBatch ? 0.7 : 1,
+                cursor: savingBatch ? "not-allowed" : "pointer",
+              }}
+              onClick={cancelBatch}
+              disabled={savingBatch}
+            >
+              ❌ Cancelar
+            </button>
 
-              const checked = Boolean(selected[p.id]);
-
-              return (
-                <div
-                  key={p.id}
-                  className="pc-card"
-                  onClick={() => {
-                    // no modo lote, tocar no card também seleciona (facilita no celular)
-                    if (batchActive) toggleSelect(p.id);
-                  }}
-                  style={{ cursor: batchActive ? "pointer" : "default" }}
-                >
-                  <div className="pc-between" style={{ alignItems: "flex-start" }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div className="pc-between" style={{ alignItems: "flex-start" }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                            {batchActive ? (
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleSelect(p.id)}
-                                onClick={(e) => e.stopPropagation()}
-                                style={{ width: 18, height: 18 }}
-                                aria-label={`Selecionar ${p.name}`}
-                              />
-                            ) : null}
-
-                            <div style={{ fontSize: 16, fontWeight: 950, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>
-                              {p.name}
-                            </div>
-
-                            <span style={pillStyle(c.status.key)}>
-                              <span aria-hidden>{c.status.emoji}</span>
-                              <span>{c.status.label}</span>
-                            </span>
-                          </div>
-
-                          <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-                            <div className="pc-subtitle">🗓️ {c.nextText}</div>
-                            <div className="pc-subtitle">💧 {lastLine}</div>
-                            <div className="pc-subtitle">
-                              📍 {c.placeLabel ?? "(sem ambiente)"}{" "}
-                              {c.freq ? (
-                                <span style={{ opacity: 0.8, fontWeight: 800 }}>• 💧 {c.freq}d</span>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-
-                        {!batchActive ? (
-                          <Link href={`/planta/${p.id}`} style={smallLinkStyle()}>
-                            Ver detalhes →
-                          </Link>
-                        ) : (
-                          <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.7 }}>
-                            {checked ? "Selecionada" : "Toque para selecionar"}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button type="button" style={secondaryBtn} onClick={selectAllVisible}>
+                Selecionar visíveis
+              </button>
+              <button type="button" style={secondaryBtn} onClick={clearSelection}>
+                Limpar
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Atalhos / navegação simples */}
-        <div className="pc-card">
-          <div className="pc-between">
-            <Link href="/plants" style={smallLinkStyle()}>
-              🌿 Plantas
-            </Link>
-            <Link href="/house" style={smallLinkStyle()}>
-              🏠 Casa
-            </Link>
-          </div>
+        <div style={{ fontSize: 13, color: "#4b5563", marginTop: 12 }}>
+          Exibindo <b>{filteredCards.length}</b> de <b>{summaryAll.total}</b>.
+          {batchActive ? (
+            <>
+              {" "}
+              • Modo: <b>{mode === "waterBatch" ? "REGAR" : "SOL"}</b>
+            </>
+          ) : null}
         </div>
+      </AppCard>
 
-        {/* Espaço final para não “colar” no bottom nav (se existir) */}
-        <div style={{ height: 24 }} />
+      {/* lista */}
+      <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+        {loading ? (
+          <AppCard noCenter style={{ padding: 14 }}>
+            <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>Carregando...</div>
+          </AppCard>
+        ) : filteredCards.length === 0 ? (
+          <AppCard noCenter style={{ padding: 14 }}>
+            <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>
+              Nenhuma planta encontrada com os filtros atuais.
+            </div>
+          </AppCard>
+        ) : (
+          filteredCards.map((c) => {
+            const p = c.plant;
+
+            const lastLine = c.lastWaterDateIso
+              ? `Última rega: ${formatIsoToBrDate(c.lastWaterDateIso)}${
+                  c.lastWaterTime ? ` às ${String(c.lastWaterTime).slice(0, 5)}` : ""
+                }`
+              : "Última rega: —";
+
+            const checked = Boolean(selected[p.id]);
+
+            return (
+              <AppCard
+                key={p.id}
+                noCenter
+                style={{
+                  padding: 14,
+                  cursor: batchActive ? "pointer" : "default",
+                }}
+              >
+                <div
+                  onClick={() => {
+                    if (batchActive) toggleSelect(p.id);
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        {batchActive ? (
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleSelect(p.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ width: 18, height: 18 }}
+                            aria-label={`Selecionar ${p.name}`}
+                          />
+                        ) : null}
+
+                        <div
+                          style={{
+                            fontSize: 16,
+                            fontWeight: 950,
+                            color: "#111",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            maxWidth: 240,
+                          }}
+                          title={p.name}
+                        >
+                          {p.name}
+                        </div>
+
+                        <span style={pillStyle(c.status.key)}>
+                          <span aria-hidden>{c.status.emoji}</span>
+                          <span>{c.status.label}</span>
+                        </span>
+                      </div>
+
+                      <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                        <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 700 }}>🗓️ {c.nextText}</div>
+                        <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 700 }}>💧 {lastLine}</div>
+                        <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 700 }}>
+                          📍 {c.placeLabel ?? "(sem ambiente)"}{" "}
+                          {c.freq ? <span style={{ opacity: 0.9, fontWeight: 900 }}>• 💧 {c.freq}d</span> : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    {!batchActive ? (
+                      <Link href={`/planta/${p.id}`} style={linkSmall}>
+                        Ver detalhes →
+                      </Link>
+                    ) : (
+                      <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.7 }}>
+                        {checked ? "Selecionada" : "Toque p/ selecionar"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </AppCard>
+            );
+          })
+        )}
       </div>
-    </main>
+
+      {/* atalhos */}
+      <AppCard noCenter style={{ padding: 14, marginTop: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+          <Link href="/plants" style={linkSmall}>
+            🌿 Plantas
+          </Link>
+          <Link href="/house" style={linkSmall}>
+            🏠 Casa
+          </Link>
+        </div>
+      </AppCard>
+
+      {/* respiro para o BottomNav não cobrir */}
+      <div style={{ height: 120 }} />
+    </AppCard>
   );
 }

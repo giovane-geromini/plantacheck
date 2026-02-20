@@ -12,24 +12,9 @@ type Item = {
 };
 
 const items: Item[] = [
-  {
-    href: "/dashboard",
-    label: "Dashboard",
-    icon: "🏠",
-    match: (p) => p === "/" || p.startsWith("/dashboard"),
-  },
-  {
-    href: "/plants",
-    label: "Plantas",
-    icon: "🌿",
-    match: (p) => p.startsWith("/plants") || p.startsWith("/planta"),
-  },
-  {
-    href: "/house",
-    label: "Casa",
-    icon: "🏡",
-    match: (p) => p.startsWith("/house"),
-  },
+  { href: "/dashboard", label: "Dashboard", icon: "🏠", match: (p) => p === "/" || p.startsWith("/dashboard") },
+  { href: "/plants", label: "Plantas", icon: "🌿", match: (p) => p.startsWith("/plants") || p.startsWith("/planta") },
+  { href: "/house", label: "Casa", icon: "🏡", match: (p) => p.startsWith("/house") },
 ];
 
 export default function BottomNav() {
@@ -42,16 +27,20 @@ export default function BottomNav() {
     bottom: 0,
     zIndex: 50,
     padding: "10px 12px calc(env(safe-area-inset-bottom) + 10px)",
-    background: "rgba(246,247,249,0.92)", // mesmo fundo do app
+    background: "rgba(246,247,249,0.92)",
     backdropFilter: "blur(10px)",
-    borderTop: "1px solid #e6e8eb",
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: "#e6e8eb",
   };
 
   const bar: React.CSSProperties = {
     maxWidth: 460,
     margin: "0 auto",
     background: "#fff",
-    border: "1px solid #e6e8eb",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#e6e8eb",
     borderRadius: 16,
     boxShadow: "0 10px 28px rgba(0,0,0,0.06)",
     padding: 8,
@@ -63,7 +52,9 @@ export default function BottomNav() {
   const itemBase: React.CSSProperties = {
     height: 46,
     borderRadius: 14,
-    border: "1px solid #d7dbe0",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#d7dbe0",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -81,15 +72,8 @@ export default function BottomNav() {
     borderColor: "#111",
   };
 
-  const iconStyle: React.CSSProperties = {
-    fontSize: 18,
-    lineHeight: "18px",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: 12,
-    letterSpacing: 0.2,
-  };
+  const iconStyle: React.CSSProperties = { fontSize: 18, lineHeight: "18px" };
+  const labelStyle: React.CSSProperties = { fontSize: 12, letterSpacing: 0.2 };
 
   return (
     <nav style={wrap} aria-label="Navegação principal">
@@ -100,7 +84,7 @@ export default function BottomNav() {
             <Link
               key={it.href}
               href={it.href}
-              style={{ ...itemBase, ...(isActive ? itemActive : null) }}
+              style={{ ...itemBase, ...(isActive ? itemActive : {}) }}
               aria-current={isActive ? "page" : undefined}
             >
               <span aria-hidden style={iconStyle}>

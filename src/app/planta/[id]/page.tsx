@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import { getOrCreateHousehold, type Household } from "@/lib/household";
+import AppCard from "@/components/AppCard";
 
 type DbPlant = {
   id: string;
@@ -191,6 +192,89 @@ function hhmmFromEventTime(t: string | null): string | null {
   return String(t).slice(0, 5);
 }
 
+/** ======= UI base (igual ao Dashboard) ======= */
+const linkSmall: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 800,
+  textDecoration: "underline",
+  color: "#111",
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 800,
+  color: "#111",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  height: 44,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#d7dbe0",
+  padding: "0 12px",
+  background: "#fff",
+  color: "#111",
+  outline: "none",
+};
+
+const primaryBtn: React.CSSProperties = {
+  width: "100%",
+  height: 46,
+  borderRadius: 12,
+  border: "none",
+  background: "#111",
+  color: "#fff",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const secondaryBtn: React.CSSProperties = {
+  width: "100%",
+  height: 44,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#d7dbe0",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+function alertErrorBox(msg: string): React.CSSProperties {
+  return {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    background: "#ffe9e9",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#ffd0d0",
+    color: "#7a1b1b",
+    fontWeight: 800,
+    fontSize: 13,
+    lineHeight: 1.35,
+  };
+}
+
+function alertOkBox(msg: string): React.CSSProperties {
+  return {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    background: "#e9fff0",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#cfe9d7",
+    color: "#14532d",
+    fontWeight: 800,
+    fontSize: 13,
+    lineHeight: 1.35,
+  };
+}
+
 export default function PlantDetailsPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -249,11 +333,13 @@ export default function PlantDetailsPage() {
         .maybeSingle();
 
       if (plantRes.error) throw plantRes.error;
+
       if (!plantRes.data) {
         setPlant(null);
         setEvents([]);
         return;
       }
+
       setPlant(plantRes.data as DbPlant);
 
       const evRes = await supabaseBrowser
@@ -491,7 +577,7 @@ export default function PlantDetailsPage() {
     if (freqTrim) {
       const n = Number(freqTrim);
       if (!Number.isFinite(n) || n <= 0) {
-        setEditError("Frequência inválida. Use um número de dias maior que 0 (ex.: 3, 7, 14).");
+        setEditError("Frequência inválida. Use um número de dias > 0 (ex.: 3, 7, 14).");
         return;
       }
       freq = Math.floor(n);
@@ -581,32 +667,37 @@ export default function PlantDetailsPage() {
     }
   }
 
+  // loading
   if (loading) {
     return (
-      <main style={{ padding: "clamp(16px, 3vw, 32px)", fontFamily: "Arial, sans-serif" }}>
-        <p>Carregando...</p>
-      </main>
+      <AppCard title="PlantaCheck" subtitle="Detalhes • Carregando..." icon="🌿" maxWidth={460}>
+        <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>Carregando...</div>
+        <div style={{ height: 120 }} />
+      </AppCard>
     );
   }
 
+  // not found
   if (!plant) {
     return (
-      <main
-        style={{
-          padding: "clamp(16px, 3vw, 32px)",
-          fontFamily: "Arial, sans-serif",
-          maxWidth: 900,
-          margin: "0 auto",
-        }}
-      >
-        <h1 style={{ marginTop: 0 }}>Planta não encontrada</h1>
-        <p>Essa planta pode ter sido removida.</p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link href="/dashboard" style={{ textDecoration: "none" }}>
-            Dashboard
-          </Link>
-        </div>
-      </main>
+      <AppCard title="PlantaCheck" subtitle="Detalhes • Planta não encontrada" icon="🌿" maxWidth={460}>
+        <AppCard noCenter style={{ padding: 14 }}>
+          <div style={{ fontWeight: 950, fontSize: 16, color: "#111" }}>Planta não encontrada</div>
+          <div style={{ marginTop: 8, fontSize: 13, color: "#4b5563", fontWeight: 700 }}>
+            Essa planta pode ter sido removida.
+          </div>
+
+          <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <Link href="/dashboard" style={linkSmall}>
+              ← Dashboard
+            </Link>
+            <Link href="/plants" style={linkSmall}>
+              🌿 Plantas
+            </Link>
+          </div>
+        </AppCard>
+        <div style={{ height: 120 }} />
+      </AppCard>
     );
   }
 
@@ -614,355 +705,253 @@ export default function PlantDetailsPage() {
     ? `${formatIsoToBrDate(lastWaterDateIso)}${lastWaterTime ? ` às ${lastWaterTime}` : ""}`
     : "—";
 
+  const subtitle = `Detalhes • Casa: ${house?.name ?? "..."}`;
+
   return (
-    <main
-      style={{
-        padding: "clamp(16px, 3vw, 32px)",
-        fontFamily: "Arial, sans-serif",
-        maxWidth: 900,
-        margin: "0 auto",
-      }}
-    >
-      <div style={{ marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button
-          onClick={() => router.back()}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-            background: "#fff",
-          }}
-        >
+    <AppCard title={plant.name} subtitle={subtitle} icon="🌿" maxWidth={460}>
+      {/* topo: voltar + atalhos */}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+        <button type="button" onClick={() => router.back()} style={linkSmall}>
           ← Voltar
         </button>
-
-        <Link
-          href="/dashboard"
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            background: "#f7f7f7",
-            textDecoration: "none",
-            color: "inherit",
-            display: "inline-flex",
-            alignItems: "center",
-          }}
-        >
-          🏠 Dashboard
-        </Link>
+        <div style={{ display: "flex", gap: 12 }}>
+          <Link href="/dashboard" style={linkSmall}>
+            Dashboard
+          </Link>
+          <Link href="/plants" style={linkSmall}>
+            Plantas
+          </Link>
+        </div>
       </div>
 
-      {err && (
-        <div style={{ marginBottom: 12, border: "1px solid #ddd", borderRadius: 12, padding: 12 }}>
-          <b>Erro:</b> {err}
-        </div>
+      {err ? <div style={alertErrorBox(err)}>{err}</div> : null}
+
+      {/* resumo */}
+      {!isEditing ? (
+        <AppCard noCenter style={{ padding: 14 }}>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>
+              📍 Ambiente: <span style={{ color: "#111" }}>{placeLabel}</span>
+            </div>
+            <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>
+              💧 Última rega: <span style={{ color: "#111" }}>{lastLine}</span>
+            </div>
+            <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 900 }}>
+              🗓️ {nextInfo.text}
+            </div>
+          </div>
+        </AppCard>
+      ) : (
+        <AppCard noCenter style={{ padding: 14 }}>
+          <div style={{ fontWeight: 950, fontSize: 16, color: "#111" }}>Editar planta</div>
+
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle}>Nome *</span>
+              <input value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} />
+            </label>
+
+            <div style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle}>Ambiente</span>
+              <select
+                value={editPlaceId}
+                onChange={(e) => setEditPlaceId(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  padding: "0 10px",
+                }}
+              >
+                <option value="">(sem ambiente)</option>
+                {places.map((pl) => (
+                  <option key={pl.id} value={pl.id}>
+                    {pl.name}
+                  </option>
+                ))}
+              </select>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                <input
+                  value={newPlaceName}
+                  onChange={(e) => setNewPlaceName(e.target.value)}
+                  placeholder="Criar novo ambiente..."
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  onClick={createPlaceQuick}
+                  disabled={creatingPlace || newPlaceName.trim().length === 0}
+                  style={{
+                    ...secondaryBtn,
+                    opacity: creatingPlace || newPlaceName.trim().length === 0 ? 0.7 : 1,
+                    cursor: creatingPlace || newPlaceName.trim().length === 0 ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {creatingPlace ? "Criando..." : "+ Ambiente"}
+                </button>
+              </div>
+            </div>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle}>Frequência de rega (dias)</span>
+              <input
+                value={editFrequency}
+                onChange={(e) => setEditFrequency(e.target.value)}
+                inputMode="numeric"
+                placeholder="Ex.: 3, 7, 14..."
+                style={inputStyle}
+              />
+              <span style={{ fontSize: 13, color: "#4b5563", fontWeight: 700 }}>
+                Dica: deixe em branco se não quiser controlar por frequência.
+              </span>
+            </label>
+
+            {editError ? (
+              <div style={{ color: "#7a1b1b", fontWeight: 900, fontSize: 13 }}>{editError}</div>
+            ) : null}
+
+            {editMsg ? <div style={alertOkBox(editMsg)}>{editMsg}</div> : null}
+          </div>
+        </AppCard>
       )}
 
-      <header style={{ marginBottom: 16 }}>
-        {!isEditing ? (
-          <>
-            <h1 style={{ margin: 0 }}>{plant.name}</h1>
-
-            <p style={{ marginTop: 8, color: "#444" }}>
-              📍 Ambiente: <strong>{placeLabel}</strong>
-            </p>
-
-            <p style={{ marginTop: 6, color: "#444" }}>
-              💧 Última rega: <strong>{lastLine}</strong>
-            </p>
-
-            <p style={{ marginTop: 6, color: "#444" }}>
-              🗓️ <strong>{nextInfo.text}</strong>
-            </p>
-          </>
-        ) : (
-          <>
-            <h1 style={{ margin: 0 }}>Editar planta</h1>
-
-            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Nome *</span>
-                <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
-                />
-              </label>
-
-              <div style={{ display: "grid", gap: 6 }}>
-                <span>Ambiente</span>
-                <select
-                  value={editPlaceId}
-                  onChange={(e) => setEditPlaceId(e.target.value)}
-                  style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
-                >
-                  <option value="">(sem ambiente)</option>
-                  {places.map((pl) => (
-                    <option key={pl.id} value={pl.id}>
-                      {pl.name}
-                    </option>
-                  ))}
-                </select>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <input
-                    value={newPlaceName}
-                    onChange={(e) => setNewPlaceName(e.target.value)}
-                    placeholder="Criar novo ambiente..."
-                    style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc", minWidth: 240 }}
-                  />
-                  <button
-                    onClick={createPlaceQuick}
-                    disabled={creatingPlace || newPlaceName.trim().length === 0}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 10,
-                      border: "1px solid #ccc",
-                      cursor: "pointer",
-                      background: "#fff",
-                    }}
-                  >
-                    {creatingPlace ? "Criando..." : "+ Ambiente"}
-                  </button>
-                </div>
-              </div>
-
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Frequência de rega (dias)</span>
-                <input
-                  value={editFrequency}
-                  onChange={(e) => setEditFrequency(e.target.value)}
-                  inputMode="numeric"
-                  placeholder="Ex.: 3, 7, 14..."
-                  style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
-                />
-                <span style={{ fontSize: 13, color: "#666" }}>
-                  Dica: deixe em branco se não quiser controlar por frequência.
-                </span>
-              </label>
-
-              {editError && <div style={{ color: "crimson", fontSize: 14 }}>{editError}</div>}
-              {editMsg && <div style={{ color: "#2e7d32", fontSize: 14 }}>{editMsg}</div>}
-            </div>
-          </>
-        )}
-      </header>
-
-      <section
-        style={{
-          border: "1px solid #ddd",
-          borderRadius: 12,
-          padding: 16,
-          background: "white",
-          marginBottom: 16,
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <button
-          onClick={waterNow}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-            background: "#f7f7f7",
-          }}
-        >
-          Reguei agora
-        </button>
-
-        <button
-          onClick={() => {
-            setShowManual((v) => !v);
-            setManualError(null);
-            setEditMsg(null);
-          }}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-            background: "#fff",
-          }}
-        >
-          + Registrar rega manual
-        </button>
-
-        {!isEditing ? (
-          <button
-            onClick={startEdit}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              cursor: "pointer",
-              background: "#fff",
-            }}
-          >
-            ✏️ Editar
+      {/* ações */}
+      <AppCard noCenter style={{ padding: 14, marginTop: 12 }}>
+        <div style={{ display: "grid", gap: 10 }}>
+          <button type="button" onClick={waterNow} style={primaryBtn}>
+            💧 Reguei agora
           </button>
-        ) : (
-          <>
-            <button
-              onClick={saveEdit}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                cursor: "pointer",
-                background: "#f7f7f7",
-              }}
-            >
-              ✅ Salvar
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowManual((v) => !v);
+              setManualError(null);
+              setEditMsg(null);
+            }}
+            style={secondaryBtn}
+          >
+            + Registrar rega manual
+          </button>
+
+          {!isEditing ? (
+            <button type="button" onClick={startEdit} style={secondaryBtn}>
+              ✏️ Editar
             </button>
-            <button
-              onClick={cancelEdit}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                cursor: "pointer",
-                background: "#fff",
-              }}
-            >
-              ❌ Cancelar
-            </button>
-          </>
-        )}
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button type="button" onClick={saveEdit} style={primaryBtn}>
+                ✅ Salvar
+              </button>
+              <button type="button" onClick={cancelEdit} style={secondaryBtn}>
+                ❌ Cancelar
+              </button>
+            </div>
+          )}
 
-        <button
-          onClick={removePlant}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-            background: "#fff",
-            marginLeft: "auto",
-          }}
-        >
-          🗑️ Remover planta
-        </button>
-      </section>
+          <button type="button" onClick={removePlant} style={{ ...secondaryBtn, borderColor: "#ffd0d0" }}>
+            🗑️ Remover planta
+          </button>
 
-      {showManual && (
-        <section
-          style={{
-            border: "1px solid #ddd",
-            borderRadius: 12,
-            padding: 16,
-            background: "white",
-            marginBottom: 16,
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>Registrar rega manual</h2>
+          {editMsg && !isEditing ? <div style={alertOkBox(editMsg)}>{editMsg}</div> : null}
+        </div>
+      </AppCard>
 
-          <div style={{ display: "grid", gap: 10 }}>
+      {/* rega manual */}
+      {showManual ? (
+        <AppCard noCenter style={{ padding: 14, marginTop: 12 }}>
+          <div style={{ fontWeight: 950, fontSize: 16, color: "#111" }}>Registrar rega manual</div>
+
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
             <label style={{ display: "grid", gap: 6 }}>
-              <span>Data (dd/mm/aaaa)</span>
+              <span style={labelStyle}>Data (dd/mm/aaaa)</span>
               <input
                 value={manualDateBr}
                 onChange={(e) => setManualDateBr(e.target.value)}
                 placeholder="Ex.: 13/02/2026"
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
+                style={inputStyle}
               />
             </label>
 
             <label style={{ display: "grid", gap: 6 }}>
-              <span>Hora (HH:mm)</span>
+              <span style={labelStyle}>Hora (HH:mm)</span>
               <input
                 value={manualTime}
                 onChange={(e) => setManualTime(e.target.value)}
                 placeholder="Ex.: 13:05"
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
+                style={inputStyle}
               />
             </label>
 
-            {manualError && <div style={{ color: "crimson", fontSize: 14 }}>{manualError}</div>}
+            {manualError ? (
+              <div style={{ color: "#7a1b1b", fontWeight: 900, fontSize: 13 }}>{manualError}</div>
+            ) : null}
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={addManualWatering}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ccc",
-                  cursor: "pointer",
-                  background: "#f7f7f7",
-                }}
-              >
-                ✅ Salvar rega manual
-              </button>
+            <button type="button" onClick={addManualWatering} style={primaryBtn}>
+              ✅ Salvar rega manual
+            </button>
 
-              <button
-                onClick={() => {
-                  setShowManual(false);
-                  setManualError(null);
-                }}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ccc",
-                  cursor: "pointer",
-                  background: "#fff",
-                }}
-              >
-                Cancelar
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowManual(false);
+                setManualError(null);
+              }}
+              style={secondaryBtn}
+            >
+              Cancelar
+            </button>
           </div>
-        </section>
-      )}
+        </AppCard>
+      ) : null}
 
-      <section style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16, background: "white" }}>
-        <h2 style={{ marginTop: 0 }}>Eventos</h2>
+      {/* eventos */}
+      <AppCard noCenter style={{ padding: 14, marginTop: 12 }}>
+        <div style={{ fontWeight: 950, fontSize: 16, color: "#111" }}>Eventos</div>
 
         {events.length === 0 ? (
-          <p>Nenhum evento ainda. Use “Reguei agora” ou ações em lote no Dashboard.</p>
+          <div style={{ marginTop: 10, fontSize: 13, color: "#4b5563", fontWeight: 700 }}>
+            Nenhum evento ainda. Use “Reguei agora” ou ações em lote no Dashboard.
+          </div>
         ) : (
-          <ul style={{ paddingLeft: 18, margin: 0, display: "grid", gap: 8 }}>
-            {events.map((e) => (
-              <li key={e.id} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <span>
-                  {e.event_type === "water" ? "💧 Rega" : e.event_type === "sun" ? "☀️ Sol" : "⚙️ Config"} •{" "}
-                  {formatIsoToBrDate(e.event_date)}
-                  {hhmmFromEventTime(e.event_time) ? ` às ${hhmmFromEventTime(e.event_time)}` : ""}
-                </span>
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            {events.map((e) => {
+              const typeLabel =
+                e.event_type === "water" ? "💧 Rega" : e.event_type === "sun" ? "☀️ Sol" : "⚙️ Config";
 
-                <button
-                  onClick={() => removeEvent(e.id)}
+              return (
+                <div
+                  key={e.id}
                   style={{
-                    padding: "6px 10px",
-                    borderRadius: 10,
-                    border: "1px solid #ccc",
-                    cursor: "pointer",
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderStyle: "solid",
+                    borderColor: "#e6e8eb",
+                    padding: 12,
                     background: "#fff",
+                    display: "flex",
+                    gap: 10,
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
                   }}
-                  title="Remover evento"
                 >
-                  Remover
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#111" }}>
+                    {typeLabel} • {formatIsoToBrDate(e.event_date)}
+                    {hhmmFromEventTime(e.event_time) ? ` às ${hhmmFromEventTime(e.event_time)}` : ""}
+                  </div>
+
+                  <button type="button" onClick={() => removeEvent(e.id)} style={linkSmall} title="Remover evento">
+                    Remover
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         )}
+      </AppCard>
 
-        {editMsg && !isEditing && <div style={{ marginTop: 10, color: "#2e7d32", fontSize: 14 }}>{editMsg}</div>}
-      </section>
-
-      <div style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <Link href="/dashboard" style={{ textDecoration: "underline" }}>
-          ← Dashboard
-        </Link>
-        <Link href="/plants" style={{ textDecoration: "underline" }}>
-          Cadastro (lista simples)
-        </Link>
-      </div>
-    </main>
+      {/* respiro p/ BottomNav */}
+      <div style={{ height: 120 }} />
+    </AppCard>
   );
 }
