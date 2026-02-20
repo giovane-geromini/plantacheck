@@ -2,6 +2,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ClientProviders from "./ClientProviders";
+import BottomNavGate from "@/components/BottomNavGate";
 
 export const metadata: Metadata = {
   title: "PlantaCheck",
@@ -16,9 +17,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <body suppressHydrationWarning>
+      <body suppressHydrationWarning style={{ paddingBottom: 120 }}>
         <ClientProviders />
         {children}
+        <BottomNavGate />
       </body>
     </html>
   );

@@ -1,7 +1,7 @@
 // src/app/plants/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import { getOrCreateHousehold, type Household } from "@/lib/household";
@@ -12,10 +12,8 @@ type Plant = {
   name: string;
   place: string | null;
 
-  // schema atual do seu banco (pode existir ou não, então tratamos como opcional)
   frequency_days?: number | null;
 
-  // campos antigos podem existir, mas não dependemos deles aqui
   created_at?: string;
   updated_at?: string;
 };
@@ -25,6 +23,150 @@ function getSupabaseClient(): any {
     ? (supabaseBrowser as any)()
     : (supabaseBrowser as any);
 }
+
+/** ======= UI (igual ao login) ======= */
+const pageStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  padding: 18,
+  display: "grid",
+  placeItems: "start center",
+};
+
+const containerStyle: React.CSSProperties = {
+  width: "100%",
+  maxWidth: 460,
+  display: "grid",
+  gap: 12,
+};
+
+const cardStyle: React.CSSProperties = {
+  background: "#fff",
+  border: "1px solid #e6e8eb",
+  borderRadius: 16,
+  padding: 18,
+  boxShadow: "0 10px 28px rgba(0,0,0,0.06)",
+};
+
+const headerRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const brandRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  minWidth: 0,
+};
+
+const logoStyle: React.CSSProperties = {
+  width: 44,
+  height: 44,
+  borderRadius: 14,
+  background: "#e9fff0",
+  display: "grid",
+  placeItems: "center",
+  border: "1px solid #cfe9d7",
+  fontSize: 22,
+  flex: "0 0 auto",
+};
+
+const titleStyle: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 950,
+  color: "#111",
+  lineHeight: 1.1,
+};
+
+const subtitleStyle: React.CSSProperties = {
+  fontSize: 13,
+  color: "#4b5563",
+  marginTop: 6,
+  lineHeight: 1.25,
+};
+
+const linkBtn: React.CSSProperties = {
+  border: "none",
+  background: "transparent",
+  padding: 0,
+  textDecoration: "underline",
+  fontSize: 13,
+  fontWeight: 800,
+  color: "#111",
+  cursor: "pointer",
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 800,
+  color: "#111",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  height: 44,
+  borderRadius: 12,
+  border: "1px solid #d7dbe0",
+  padding: "0 12px",
+  background: "#fff",
+  color: "#111",
+  outline: "none",
+};
+
+const primaryBtn: React.CSSProperties = {
+  width: "100%",
+  height: 46,
+  borderRadius: 12,
+  border: "none",
+  background: "#111",
+  color: "#fff",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const secondaryBtn: React.CSSProperties = {
+  width: "100%",
+  height: 44,
+  borderRadius: 12,
+  border: "1px solid #d7dbe0",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const dangerBtn: React.CSSProperties = {
+  height: 38,
+  borderRadius: 12,
+  border: "1px solid #ffd0d0",
+  background: "#ffe9e9",
+  color: "#7a1b1b",
+  fontWeight: 900,
+  cursor: "pointer",
+  padding: "0 12px",
+  whiteSpace: "nowrap",
+};
+
+const alertError: React.CSSProperties = {
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 12,
+  background: "#ffe9e9",
+  border: "1px solid #ffd0d0",
+  color: "#7a1b1b",
+  fontWeight: 800,
+  fontSize: 13,
+  lineHeight: 1.35,
+};
+
+const muted: React.CSSProperties = {
+  fontSize: 13,
+  color: "#374151",
+  opacity: 0.9,
+  lineHeight: 1.35,
+};
 
 export default function PlantsPage() {
   const [loading, setLoading] = useState(true);
@@ -37,6 +179,11 @@ export default function PlantsPage() {
   const [place, setPlace] = useState("");
   const [frequencyDays, setFrequencyDays] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
+  const filtered = useMemo(() => {
+    // simples: ordena por nome
+    return [...plants].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [plants]);
 
   async function loadAll() {
     const supabase = getSupabaseClient();
@@ -68,9 +215,10 @@ export default function PlantsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function addPlant() {
-    const supabase = getSupabaseClient();
+  async function addPlant(e?: React.FormEvent) {
+    e?.preventDefault();
 
+    const supabase = getSupabaseClient();
     if (!house) return;
 
     const trimmed = name.trim();
@@ -88,17 +236,12 @@ export default function PlantsPage() {
           ? null
           : Math.max(0, parseInt(frequencyDays.trim(), 10));
 
-      // ✅ IMPORTANTÍSSIMO:
-      // Inserimos SOMENTE colunas que existem no schema atual do seu plants.
-      // Pelo seu print, existem: household_id, name, place (e provavelmente frequency_days).
       const payload: any = {
         household_id: house.id,
         name: trimmed,
         place: place.trim() || null,
       };
 
-      // só envia frequency_days se o usuário preencheu (e se existir no schema, funciona)
-      // se não existir no schema, o Supabase vai retornar erro e aí a gente ajusta.
       if (Number.isFinite(freq as any)) {
         payload.frequency_days = freq;
       }
@@ -141,109 +284,165 @@ export default function PlantsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-md p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Plantas</h1>
-          <p className="text-sm opacity-80 mt-1">
-            Casa: <b>{house?.name ?? "..."}</b>
-          </p>
+    <main style={pageStyle}>
+      {/* vars de cor igual ao login */}
+      <style>{`
+        :root{
+          --pc-border:#e6e8eb;
+          --pc-input:#d7dbe0;
+        }
+        body{
+          background:#f6f7f9;
+          color:#111;
+        }
+      `}</style>
+
+      <div style={containerStyle}>
+        {/* Header */}
+        <div style={cardStyle}>
+          <div style={headerRow}>
+            <div style={brandRow}>
+              <div style={logoStyle} aria-hidden>
+                🌿
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={titleStyle}>PlantaCheck</div>
+                <div style={subtitleStyle}>
+                  Plantas • Casa: <b style={{ color: "#111" }}>{house?.name ?? "..."}</b>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button onClick={loadAll} style={linkBtn} type="button">
+                Recarregar
+              </button>
+              <Link href="/dashboard" style={{ ...linkBtn, display: "inline-block" }}>
+                Dashboard
+              </Link>
+            </div>
+          </div>
+
+          {err && <div style={alertError}>{err}</div>}
+
+          {/* Form */}
+          <form onSubmit={addPlant} style={{ marginTop: 14, display: "grid", gap: 10 }}>
+            <div style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle}>Nome *</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={inputStyle}
+                placeholder="Ex: Jiboia"
+                disabled={saving}
+              />
+            </div>
+
+            <div style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle}>Local (texto)</span>
+              <input
+                value={place}
+                onChange={(e) => setPlace(e.target.value)}
+                style={inputStyle}
+                placeholder="Ex: Sala / Varanda"
+                disabled={saving}
+              />
+            </div>
+
+            <div style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle}>Frequência (dias)</span>
+              <input
+                value={frequencyDays}
+                onChange={(e) => setFrequencyDays(e.target.value)}
+                style={inputStyle}
+                inputMode="numeric"
+                placeholder="Ex: 3"
+                disabled={saving}
+              />
+            </div>
+
+            <button
+              type="submit"
+              onClick={() => {}}
+              disabled={!house || saving || name.trim().length === 0}
+              style={{
+                ...primaryBtn,
+                opacity: !house || saving || name.trim().length === 0 ? 0.7 : 1,
+                cursor: !house || saving || name.trim().length === 0 ? "not-allowed" : "pointer",
+              }}
+            >
+              {saving ? "Salvando..." : "Adicionar"}
+            </button>
+
+            <div style={muted}>
+              Dica: mantenha o cadastro simples. A edição detalhada fica na tela “Ver detalhes” (por planta).
+            </div>
+          </form>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Link className="text-sm underline" href="/dashboard">
-            Dashboard
-          </Link>
-          <Link className="text-sm underline" href="/house">
-            Casa
-          </Link>
-        </div>
-      </div>
+        {/* Lista */}
+        <div style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 950 }}>Minhas plantas</div>
+            <div style={{ fontSize: 13, color: "#4b5563" }}>
+              Total: <b style={{ color: "#111" }}>{plants.length}</b>
+            </div>
+          </div>
 
-      {err && (
-        <div className="mt-4 rounded-lg border p-3 text-sm">
-          <b>Erro:</b> {err}
-        </div>
-      )}
+          {loading && <div style={{ marginTop: 12, ...muted }}>Carregando...</div>}
 
-      <section className="mt-4 rounded-xl border p-4">
-        <h2 className="text-sm font-semibold">Adicionar planta</h2>
+          {!loading && filtered.length === 0 && (
+            <div style={{ marginTop: 12, ...muted }}>Nenhuma planta cadastrada ainda.</div>
+          )}
 
-        <label className="mt-3 block text-xs font-medium">Nome *</label>
-        <input
-          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Ex: Jiboia"
-        />
-
-        <label className="mt-3 block text-xs font-medium">Local (texto)</label>
-        <input
-          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-          value={place}
-          onChange={(e) => setPlace(e.target.value)}
-          placeholder="Ex: Sala / Varanda"
-        />
-
-        <label className="mt-3 block text-xs font-medium">Frequência (dias)</label>
-        <input
-          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-          value={frequencyDays}
-          onChange={(e) => setFrequencyDays(e.target.value)}
-          inputMode="numeric"
-          placeholder="Ex: 3"
-        />
-
-        <button
-          onClick={addPlant}
-          disabled={!house || saving || name.trim().length === 0}
-          className="mt-3 w-full rounded-lg border px-3 py-2 text-sm"
-        >
-          {saving ? "Salvando..." : "Adicionar"}
-        </button>
-      </section>
-
-      <section className="mt-4">
-        <h2 className="text-sm font-semibold">Minhas plantas</h2>
-
-        {loading && <p className="mt-3 text-sm">Carregando...</p>}
-
-        {!loading && plants.length === 0 && (
-          <p className="mt-3 text-sm opacity-80">Nenhuma planta cadastrada ainda.</p>
-        )}
-
-        <div className="mt-3 space-y-2">
-          {plants.map((p) => (
-            <div key={p.id} className="rounded-xl border p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium">{p.name}</p>
-                  <p className="text-xs opacity-80">
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            {filtered.map((p) => (
+              <div
+                key={p.id}
+                style={{
+                  border: "1px solid var(--pc-border)",
+                  borderRadius: 14,
+                  padding: 12,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  background: "#fff",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 950, fontSize: 15, color: "#111" }}>{p.name}</div>
+                  <div style={{ marginTop: 6, fontSize: 13, color: "#374151", lineHeight: 1.35 }}>
                     {p.place ? `📍 ${p.place}` : "📍 (sem local)"}{" "}
-                    {p.frequency_days != null ? `• 💧 ${p.frequency_days}d` : ""}
-                  </p>
+                    {p.frequency_days != null ? (
+                      <>
+                        • <b style={{ color: "#111" }}>💧 {p.frequency_days}d</b>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => removePlant(p.id)}
-                  className="text-xs underline opacity-80"
+                  style={dangerBtn}
                   title="Excluir"
                 >
-                  Excluir
+                  🗑️ Remover
                 </button>
               </div>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
 
-      <div className="mt-6 flex gap-3">
-        <Link className="text-sm underline" href="/dashboard">
-          ← Dashboard
-        </Link>
-        <button className="text-sm underline" onClick={loadAll}>
-          Recarregar
-        </button>
+          <div style={{ marginTop: 14, display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <Link href="/house" style={{ ...linkBtn, display: "inline-block" }}>
+              Casa
+            </Link>
+            <Link href="/dashboard" style={{ ...linkBtn, display: "inline-block" }}>
+              ← Dashboard
+            </Link>
+          </div>
+        </div>
       </div>
     </main>
   );

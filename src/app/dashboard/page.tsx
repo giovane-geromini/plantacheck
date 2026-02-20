@@ -206,13 +206,37 @@ function statusPriority(k: StatusKey) {
   return 4;
 }
 
-function statusPillClass(k: StatusKey) {
-  // sem cores agressivas; só “tons” via classes neutras
-  if (k === "atrasada") return "bg-red-50 border-red-200";
-  if (k === "hoje") return "bg-amber-50 border-amber-200";
-  if (k === "emDia") return "bg-emerald-50 border-emerald-200";
-  if (k === "primeiraRega") return "bg-sky-50 border-sky-200";
-  return "bg-zinc-50 border-zinc-200";
+function pillStyle(k: StatusKey): React.CSSProperties {
+  // tons suaves (igual vibe do login)
+  const base: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    height: 30,
+    padding: "0 10px",
+    borderRadius: 999,
+    border: "1px solid var(--pc-border)",
+    background: "#fff",
+    fontSize: 12,
+    fontWeight: 900,
+    color: "#111",
+    whiteSpace: "nowrap",
+  };
+
+  if (k === "atrasada")
+    return { ...base, background: "#ffe9e9", borderColor: "var(--pc-red-border)", color: "var(--pc-red-text)" };
+  if (k === "hoje")
+    return { ...base, background: "#fff7e6", borderColor: "#ffe2a8", color: "#7a4b00" };
+  if (k === "emDia")
+    return { ...base, background: "var(--pc-green-bg)", borderColor: "var(--pc-green-border)", color: "var(--pc-green-text)" };
+  if (k === "primeiraRega")
+    return { ...base, background: "#eaf2ff", borderColor: "#cfe0ff", color: "#1e3a8a" };
+
+  return { ...base, background: "#f2f3f5", borderColor: "var(--pc-border-2)", color: "#374151" };
+}
+
+function smallLinkStyle(): React.CSSProperties {
+  return { fontSize: 13, fontWeight: 800, textDecoration: "underline" };
 }
 
 export default function DashboardPage() {
@@ -376,7 +400,6 @@ export default function DashboardPage() {
       const pb = statusPriority(b.status.key);
       if (pa !== pb) return pa - pb;
 
-      // dentro do grupo: mais atrasada primeiro (deltaDays mais negativo)
       if (a.deltaDays != null && b.deltaDays != null && a.deltaDays !== b.deltaDays) {
         return a.deltaDays - b.deltaDays;
       }
@@ -451,7 +474,6 @@ export default function DashboardPage() {
       const ins = await supabaseBrowser.from("events").insert(payload);
       if (ins.error) throw ins.error;
 
-      // reload events
       const eventsRes = await supabaseBrowser
         .from("events")
         .select("*")
@@ -472,270 +494,280 @@ export default function DashboardPage() {
     }
   }
 
-  function summaryButton(
-    key: "all" | StatusKey,
-    title: string,
-    count: number,
-    emoji: string
-  ) {
-    const active = statusFilter === key;
+  function FilterChip(props: {
+    id: "all" | StatusKey;
+    label: string;
+    emoji: string;
+    count: number;
+  }) {
+    const active = statusFilter === props.id;
+
+    const style: React.CSSProperties = active
+      ? {
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          height: 34,
+          padding: "0 12px",
+          borderRadius: 999,
+          border: "1px solid #111",
+          background: "#111",
+          color: "#fff",
+          fontSize: 13,
+          fontWeight: 900,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }
+      : {
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          height: 34,
+          padding: "0 12px",
+          borderRadius: 999,
+          border: "1px solid var(--pc-border)",
+          background: "#fff",
+          color: "#111",
+          fontSize: 13,
+          fontWeight: 900,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        };
+
     return (
-      <button
-        onClick={() => setStatusFilter(key)}
-        className={[
-          "rounded-2xl border p-3 text-left transition",
-          active ? "bg-black text-white border-black" : "bg-white hover:bg-zinc-50",
-        ].join(" ")}
-        title={`Filtrar: ${title}`}
-      >
-        <div className={active ? "opacity-90 text-xs" : "opacity-70 text-xs"}>{emoji} {title}</div>
-        <div className="text-lg font-semibold">{count}</div>
+      <button type="button" onClick={() => setStatusFilter(props.id)} style={style} title="Filtrar">
+        <span aria-hidden>{props.emoji}</span>
+        <span>{props.label}</span>
+        <span style={{ opacity: active ? 0.9 : 0.75, fontWeight: 900 }}>({props.count})</span>
       </button>
     );
   }
 
   return (
-    <main className="mx-auto max-w-5xl p-4">
-      {/* Topo estilo app */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold">🌱 Dashboard</h1>
-          <p className="text-sm opacity-80 mt-1 truncate">
-            Casa: <b>{house?.name ?? "..."}</b>
-          </p>
-          <p className="text-xs opacity-70 mt-1">
-            Eventos = fonte da verdade • Ordenação por prioridade
-          </p>
-        </div>
+    <main className="pc-page">
+      <div className="pc-container" style={{ display: "grid", gap: 12 }}>
+        {/* Header (igual ao login: logo + nome) */}
+        <div className="pc-card">
+          <div className="pc-between" style={{ alignItems: "flex-start" }}>
+            <div className="pc-row" style={{ alignItems: "flex-start" }}>
+              <div className="pc-logo" aria-hidden>
+                🌿
+              </div>
+              <div style={{ lineHeight: 1.1 }}>
+                <div className="pc-title">PlantaCheck</div>
+                <div className="pc-subtitle">
+                  Dashboard • Casa: <b>{house?.name ?? "..."}</b>
+                </div>
+              </div>
+            </div>
 
-        <div className="flex items-center gap-3">
-          <button onClick={loadAll} className="text-sm underline">
-            Recarregar
-          </button>
-          <button onClick={logout} className="text-sm underline">
-            Sair
-          </button>
-        </div>
-      </div>
-
-      {err && (
-        <div className="mt-4 rounded-xl border p-3 text-sm bg-white">
-          <b>Erro:</b> {err}
-        </div>
-      )}
-
-      {/* Resumo + filtro por status */}
-      <section className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-6">
-        {summaryButton("all", "Todas", summaryAll.total, "📌")}
-        {summaryButton("atrasada", "Atrasadas", summaryAll.atrasada, "🔴")}
-        {summaryButton("hoje", "Hoje", summaryAll.hoje, "🟡")}
-        {summaryButton("emDia", "Em dia", summaryAll.emDia, "🟢")}
-        {summaryButton("primeiraRega", "1ª rega", summaryAll.primeira, "🔵")}
-        {summaryButton("semFrequencia", "Sem freq.", summaryAll.semFreq, "⚪")}
-      </section>
-
-      {/* Ações globais */}
-      <section className="mt-4 rounded-2xl border p-4 bg-white">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold">Ações em lote</h2>
-            <p className="text-xs opacity-80 mt-1">
-              Selecione plantas e registre um evento (rega ou sol) de uma vez.
-            </p>
+            <div className="pc-row" style={{ gap: 12 }}>
+              <button type="button" className="pc-btn-link" onClick={loadAll}>
+                Recarregar
+              </button>
+              <button type="button" className="pc-btn-link" onClick={logout}>
+                Sair
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {!batchActive ? (
-              <>
-                <button
-                  onClick={() => enterMode("waterBatch")}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50"
-                >
-                  💧 Regar Agora
-                </button>
-                <button
-                  onClick={() => enterMode("sunBatch")}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50"
-                >
-                  ☀️ Sol Agora
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={confirmBatch}
-                  disabled={savingBatch}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50 disabled:opacity-60"
-                >
-                  {savingBatch ? "Salvando..." : "✅ Confirmar"}
-                </button>
-                <button
-                  onClick={cancelBatch}
-                  disabled={savingBatch}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50 disabled:opacity-60"
-                >
-                  ❌ Cancelar
-                </button>
-              </>
-            )}
+          {err && <div className="pc-alert-error">{err}</div>}
+
+          {/* Busca */}
+          <div style={{ marginTop: 14, display: "grid", gap: 6 }}>
+            <div className="pc-label">Buscar (nome ou ambiente)</div>
+            <input
+              className="pc-input"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ex: varanda, jiboia..."
+            />
+          </div>
+
+          {/* Chips de filtro (bonitinho e compacto) */}
+          <div style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
+            <FilterChip id="all" label="Todas" emoji="📌" count={summaryAll.total} />
+            <FilterChip id="atrasada" label="Atrasadas" emoji="🔴" count={summaryAll.atrasada} />
+            <FilterChip id="hoje" label="Hoje" emoji="🟡" count={summaryAll.hoje} />
+            <FilterChip id="emDia" label="Em dia" emoji="🟢" count={summaryAll.emDia} />
+            <FilterChip id="primeiraRega" label="1ª rega" emoji="🔵" count={summaryAll.primeira} />
+            <FilterChip id="semFrequencia" label="Sem freq." emoji="⚪" count={summaryAll.semFreq} />
           </div>
         </div>
 
-        <div className="mt-3">
-          <label className="block text-xs font-medium">Buscar (nome ou ambiente)</label>
-          <input
-            className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ex: varanda, jiboia..."
-          />
-        </div>
+        {/* Ações em lote (com botões iguais ao login) */}
+        <div className="pc-card">
+          <div className="pc-between" style={{ alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 950, color: "#111" }}>Ações em lote</div>
+              <div className="pc-subtitle" style={{ marginTop: 6 }}>
+                Selecione plantas e registre um evento (rega ou sol) de uma vez.
+              </div>
+            </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs opacity-80">
-          <div>
+            {batchActive ? (
+              <div className="pc-chip" style={{ fontSize: 12 }}>
+                Selecionadas: <b>{selectedIds.length}</b>
+              </div>
+            ) : null}
+          </div>
+
+          {!batchActive ? (
+            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+              <button type="button" className="pc-btn-primary" onClick={() => enterMode("waterBatch")}>
+                💧 Regar Agora
+              </button>
+              <button type="button" className="pc-btn-secondary" onClick={() => enterMode("sunBatch")}>
+                ☀️ Sol Agora
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+              <button
+                type="button"
+                className="pc-btn-primary"
+                onClick={confirmBatch}
+                disabled={savingBatch}
+                style={{ opacity: savingBatch ? 0.7 : 1, cursor: savingBatch ? "not-allowed" : "pointer" }}
+              >
+                {savingBatch ? "Salvando..." : "✅ Confirmar"}
+              </button>
+
+              <button
+                type="button"
+                className="pc-btn-secondary"
+                onClick={cancelBatch}
+                disabled={savingBatch}
+                style={{ opacity: savingBatch ? 0.7 : 1, cursor: savingBatch ? "not-allowed" : "pointer" }}
+              >
+                ❌ Cancelar
+              </button>
+
+              <div className="pc-between" style={{ marginTop: 2 }}>
+                <button type="button" className="pc-btn-secondary" onClick={selectAllVisible}>
+                  Selecionar todas (visíveis)
+                </button>
+                <button type="button" className="pc-btn-secondary" onClick={clearSelection}>
+                  Limpar
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="pc-subtitle" style={{ marginTop: 12 }}>
             Exibindo <b>{filteredCards.length}</b> de <b>{summaryAll.total}</b>.
-            {batchActive && (
+            {batchActive ? (
               <>
                 {" "}
                 • Modo: <b>{mode === "waterBatch" ? "REGAR" : "SOL"}</b>
-                {" "}
-                • Selecionadas: <b>{selectedIds.length}</b>
               </>
-            )}
+            ) : null}
           </div>
-
-          {batchActive && (
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={selectAllVisible}
-                className="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
-                title="Selecionar todas as plantas que estão sendo exibidas"
-              >
-                Selecionar todas (visíveis)
-              </button>
-              <button
-                onClick={clearSelection}
-                className="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
-                title="Limpar seleção"
-              >
-                Limpar
-              </button>
-            </div>
-          )}
         </div>
-      </section>
 
-      {/* Lista de cards */}
-      <section className="mt-4">
-        {loading && <p className="text-sm">Carregando...</p>}
-
-        {!loading && filteredCards.length === 0 && (
-          <div className="rounded-2xl border p-4 text-sm bg-white">
-            Nenhuma planta encontrada com os filtros atuais.
+        {/* Lista */}
+        {loading ? (
+          <div className="pc-card">
+            <div className="pc-subtitle">Carregando...</div>
           </div>
-        )}
+        ) : filteredCards.length === 0 ? (
+          <div className="pc-card">
+            <div className="pc-subtitle">Nenhuma planta encontrada com os filtros atuais.</div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            {filteredCards.map((c) => {
+              const p = c.plant;
 
-        <div className="space-y-3">
-          {filteredCards.map((c) => {
-            const p = c.plant;
+              const lastLine = c.lastWaterDateIso
+                ? `Última rega: ${formatIsoToBrDate(c.lastWaterDateIso)}${
+                    c.lastWaterTime ? ` às ${String(c.lastWaterTime).slice(0, 5)}` : ""
+                  }`
+                : "Última rega: —";
 
-            const lastLine = c.lastWaterDateIso
-              ? `💧 Última rega: ${formatIsoToBrDate(c.lastWaterDateIso)}${
-                  c.lastWaterTime ? ` às ${String(c.lastWaterTime).slice(0, 5)}` : ""
-                }`
-              : "💧 Última rega: —";
+              const checked = Boolean(selected[p.id]);
 
-            const checked = Boolean(selected[p.id]);
+              return (
+                <div
+                  key={p.id}
+                  className="pc-card"
+                  onClick={() => {
+                    // no modo lote, tocar no card também seleciona (facilita no celular)
+                    if (batchActive) toggleSelect(p.id);
+                  }}
+                  style={{ cursor: batchActive ? "pointer" : "default" }}
+                >
+                  <div className="pc-between" style={{ alignItems: "flex-start" }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="pc-between" style={{ alignItems: "flex-start" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            {batchActive ? (
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleSelect(p.id)}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ width: 18, height: 18 }}
+                                aria-label={`Selecionar ${p.name}`}
+                              />
+                            ) : null}
 
-            return (
-              <div
-                key={p.id}
-                className="rounded-2xl border bg-white p-4"
-                onClick={() => {
-                  // no modo lote, tocar no card também seleciona (mais fácil no celular)
-                  if (batchActive) toggleSelect(p.id);
-                }}
-                style={{ cursor: batchActive ? "pointer" : "default" }}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start gap-3">
-                      {batchActive && (
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleSelect(p.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-1 h-5 w-5"
-                          aria-label={`Selecionar ${p.name}`}
-                        />
-                      )}
+                            <div style={{ fontSize: 16, fontWeight: 950, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>
+                              {p.name}
+                            </div>
 
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold truncate">{p.name}</p>
+                            <span style={pillStyle(c.status.key)}>
+                              <span aria-hidden>{c.status.emoji}</span>
+                              <span>{c.status.label}</span>
+                            </span>
+                          </div>
 
-                          <span
-                            className={[
-                              "inline-flex items-center gap-2 rounded-full border px-2 py-1 text-xs",
-                              statusPillClass(c.status.key),
-                            ].join(" ")}
-                            title="Status"
-                          >
-                            <span>{c.status.emoji}</span>
-                            <b>{c.status.label}</b>
-                          </span>
-
-                          {c.freq ? (
-                            <span className="text-xs opacity-70">💧 {c.freq}d</span>
-                          ) : (
-                            <span className="text-xs opacity-60">💧 —</span>
-                          )}
+                          <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                            <div className="pc-subtitle">🗓️ {c.nextText}</div>
+                            <div className="pc-subtitle">💧 {lastLine}</div>
+                            <div className="pc-subtitle">
+                              📍 {c.placeLabel ?? "(sem ambiente)"}{" "}
+                              {c.freq ? (
+                                <span style={{ opacity: 0.8, fontWeight: 800 }}>• 💧 {c.freq}d</span>
+                              ) : null}
+                            </div>
+                          </div>
                         </div>
 
-                        <p className="text-xs opacity-80 mt-2">🗓️ {c.nextText}</p>
-                        <p className="text-xs opacity-80 mt-1">{lastLine}</p>
-                        <p className="text-xs opacity-80 mt-1">
-                          📍 {c.placeLabel ?? "(sem ambiente)"}
-                        </p>
+                        {!batchActive ? (
+                          <Link href={`/planta/${p.id}`} style={smallLinkStyle()}>
+                            Ver detalhes →
+                          </Link>
+                        ) : (
+                          <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.7 }}>
+                            {checked ? "Selecionada" : "Toque para selecionar"}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-
-                  <div className="flex flex-col items-end gap-2">
-                    {!batchActive && (
-                      <Link className="text-xs underline opacity-80" href={`/planta/${p.id}`}>
-                        Ver detalhes
-                      </Link>
-                    )}
-                  </div>
                 </div>
+              );
+            })}
+          </div>
+        )}
 
-                {!batchActive && (
-                  <div className="mt-3 flex items-center justify-between">
-                    <div className="text-xs opacity-60">
-                      Toque em “Regar Agora / Sol Agora” para selecionar em lote
-                    </div>
-                    <Link className="text-xs underline opacity-80" href={`/planta/${p.id}`}>
-                      Abrir →
-                    </Link>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        {/* Atalhos / navegação simples */}
+        <div className="pc-card">
+          <div className="pc-between">
+            <Link href="/plants" style={smallLinkStyle()}>
+              🌿 Plantas
+            </Link>
+            <Link href="/house" style={smallLinkStyle()}>
+              🏠 Casa
+            </Link>
+          </div>
         </div>
-      </section>
 
-      {/* Atalhos */}
-      <footer className="mt-6 flex flex-wrap gap-3 text-sm">
-        <Link className="underline" href="/plants">
-          Cadastro (lista simples)
-        </Link>
-        <Link className="underline" href="/house">
-          Casa
-        </Link>
-      </footer>
+        {/* Espaço final para não “colar” no bottom nav (se existir) */}
+        <div style={{ height: 24 }} />
+      </div>
     </main>
   );
 }
