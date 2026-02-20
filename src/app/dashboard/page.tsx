@@ -234,13 +234,6 @@ function pillStyle(k: StatusKey): React.CSSProperties {
   return { ...base, background: "#f2f3f5", borderColor: "#e6e8eb", color: "#374151" };
 }
 
-const linkSmall: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 800,
-  textDecoration: "underline",
-  color: "#111",
-};
-
 const label: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 800,
@@ -284,6 +277,25 @@ const secondaryBtn: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const detailsBtnSmall: React.CSSProperties = {
+  height: 34,
+  padding: "0 12px",
+  borderRadius: 999,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#cfe9d7",
+  background: "#e9fff0",
+  color: "#14532d",
+  fontWeight: 950,
+  fontSize: 12,
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  whiteSpace: "nowrap",
+};
+
 type ChipProps = { id: "all" | StatusKey; label: string; emoji: string; count: number };
 
 export default function DashboardPage() {
@@ -303,11 +315,6 @@ export default function DashboardPage() {
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | StatusKey>("all");
-
-  async function logout() {
-    await supabaseBrowser.auth.signOut();
-    router.replace("/login");
-  }
 
   async function loadAll() {
     setErr(null);
@@ -552,16 +559,6 @@ export default function DashboardPage() {
 
   return (
     <AppCard title="PlantaCheck" subtitle={`Dashboard • Casa: ${house?.name ?? "..."}`} icon="🌿" maxWidth={460}>
-      {/* ações topo (links) */}
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-        <button type="button" onClick={loadAll} style={linkSmall}>
-          Recarregar
-        </button>
-        <button type="button" onClick={logout} style={linkSmall}>
-          Sair
-        </button>
-      </div>
-
       {err ? (
         <div
           style={{
@@ -592,7 +589,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* chips (responsivos, quebram em linhas) */}
+      {/* chips */}
       <div className="pc-chips">
         <FilterChip id="all" label="Todas" emoji="📌" count={summaryAll.total} />
         <FilterChip id="atrasada" label="Atrasadas" emoji="🔴" count={summaryAll.atrasada} />
@@ -734,7 +731,8 @@ export default function DashboardPage() {
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      {/* Linha 1: Nome (sempre) */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                         {batchActive ? (
                           <input
                             type="checkbox"
@@ -754,13 +752,16 @@ export default function DashboardPage() {
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
-                            maxWidth: 240,
+                            maxWidth: 260,
                           }}
                           title={p.name}
                         >
-                          {p.name}
+                          🌿 {p.name}
                         </div>
+                      </div>
 
+                      {/* Linha 2: Status (sempre abaixo) */}
+                      <div style={{ marginTop: 8 }}>
                         <span style={pillStyle(c.status.key)}>
                           <span aria-hidden>{c.status.emoji}</span>
                           <span>{c.status.label}</span>
@@ -778,8 +779,8 @@ export default function DashboardPage() {
                     </div>
 
                     {!batchActive ? (
-                      <Link href={`/planta/${p.id}`} style={linkSmall}>
-                        Ver detalhes →
+                      <Link href={`/planta/${p.id}`} style={detailsBtnSmall} aria-label={`Ver detalhes de ${p.name}`}>
+                        Ver detalhes <span aria-hidden>→</span>
                       </Link>
                     ) : (
                       <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.7 }}>
@@ -794,14 +795,12 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* atalhos */}
+      {/* acesso secundário (sem ficar no BottomNav) */}
       <AppCard noCenter style={{ padding: 14, marginTop: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-          <Link href="/plants" style={linkSmall}>
-            🌿 Plantas
-          </Link>
-          <Link href="/house" style={linkSmall}>
-            🏠 Casa
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>Acesso rápido</div>
+          <Link href="/house" style={detailsBtnSmall}>
+            🏠 Casa <span aria-hidden>→</span>
           </Link>
         </div>
       </AppCard>

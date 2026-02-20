@@ -6,13 +6,6 @@ import Link from "next/link";
 import { getOrCreateHousehold, updateHouseholdName, type Household } from "@/lib/household";
 import AppCard from "@/components/AppCard";
 
-const linkSmall: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 800,
-  textDecoration: "underline",
-  color: "#111",
-};
-
 const labelStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 800,
@@ -56,7 +49,7 @@ const secondaryBtn: React.CSSProperties = {
   cursor: "pointer",
 };
 
-function alertErrorBox(msg: string): React.CSSProperties {
+function alertErrorBox(): React.CSSProperties {
   return {
     marginBottom: 12,
     padding: 12,
@@ -72,7 +65,7 @@ function alertErrorBox(msg: string): React.CSSProperties {
   };
 }
 
-function alertOkBox(msg: string): React.CSSProperties {
+function alertOkBox(): React.CSSProperties {
   return {
     marginBottom: 12,
     padding: 12,
@@ -140,23 +133,14 @@ export default function HousePage() {
   }
 
   return (
-    <AppCard title="PlantaCheck" subtitle={`Casa • ${house?.name ?? "..."}`} icon="🏠" maxWidth={460}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-        <button type="button" onClick={load} style={linkSmall}>
-          Recarregar
-        </button>
-        <Link href="/dashboard" style={linkSmall}>
-          Dashboard
-        </Link>
-      </div>
-
+    <AppCard title="PlantaCheck" subtitle={`Casa • ${house?.name ?? "..."}`} icon="🏡" maxWidth={460}>
       <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 700, marginBottom: 12, lineHeight: 1.35 }}>
-        Neste modo, cada usuário tem <b>uma casa fixa</b>. Ela é criada automaticamente no primeiro acesso.
+        Aqui você pode <b>renomear a casa</b> e consultar o <b>ID</b> para compartilhar. (Convites virão aqui depois.)
       </div>
 
       {loading ? <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>Carregando...</div> : null}
-      {!loading && err ? <div style={alertErrorBox(err)}>{err}</div> : null}
-      {!loading && msg ? <div style={alertOkBox(msg)}>{msg}</div> : null}
+      {!loading && err ? <div style={alertErrorBox()}>{err}</div> : null}
+      {!loading && msg ? <div style={alertOkBox()}>{msg}</div> : null}
 
       {!loading && house ? (
         <AppCard noCenter style={{ padding: 14 }}>
@@ -167,7 +151,7 @@ export default function HousePage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 style={inputStyle}
-                placeholder="Ex: Casa PlantaCheck"
+                placeholder="Ex: Casa Giovane & Sarah"
                 disabled={saving}
               />
             </label>
@@ -184,6 +168,19 @@ export default function HousePage() {
               {saving ? "Salvando..." : "Salvar"}
             </button>
 
+            <button
+              type="button"
+              onClick={load}
+              disabled={saving}
+              style={{
+                ...secondaryBtn,
+                opacity: saving ? 0.7 : 1,
+                cursor: saving ? "not-allowed" : "pointer",
+              }}
+            >
+              🔄 Recarregar dados
+            </button>
+
             <Link
               href="/plants"
               style={{
@@ -193,7 +190,7 @@ export default function HousePage() {
                 textDecoration: "none",
               }}
             >
-              Ir para Plantas →
+              🌿 Ir para Plantas →
             </Link>
 
             <div style={{ fontSize: 12, color: "#4b5563", lineHeight: 1.35 }}>

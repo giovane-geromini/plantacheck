@@ -19,9 +19,7 @@ type Plant = {
 };
 
 function getSupabaseClient(): any {
-  return typeof supabaseBrowser === "function"
-    ? (supabaseBrowser as any)()
-    : (supabaseBrowser as any);
+  return typeof supabaseBrowser === "function" ? (supabaseBrowser as any)() : (supabaseBrowser as any);
 }
 
 /** ======= UI (igual ao login) ======= */
@@ -126,26 +124,34 @@ const primaryBtn: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const secondaryBtn: React.CSSProperties = {
-  width: "100%",
-  height: 44,
-  borderRadius: 12,
-  border: "1px solid #d7dbe0",
-  background: "#fff",
-  color: "#111",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
 const dangerBtn: React.CSSProperties = {
-  height: 38,
+  height: 34,
+  padding: "0 12px",
   borderRadius: 12,
   border: "1px solid #ffd0d0",
   background: "#ffe9e9",
   color: "#7a1b1b",
-  fontWeight: 900,
+  fontWeight: 950,
   cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const detailsBtnSmall: React.CSSProperties = {
+  height: 34,
   padding: "0 12px",
+  borderRadius: 999,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#cfe9d7",
+  background: "#e9fff0",
+  color: "#14532d",
+  fontWeight: 950,
+  fontSize: 12,
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
   whiteSpace: "nowrap",
 };
 
@@ -181,7 +187,6 @@ export default function PlantsPage() {
   const [saving, setSaving] = useState(false);
 
   const filtered = useMemo(() => {
-    // simples: ordena por nome
     return [...plants].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [plants]);
 
@@ -231,10 +236,7 @@ export default function PlantsPage() {
     setSaving(true);
 
     try {
-      const freq =
-        frequencyDays.trim() === ""
-          ? null
-          : Math.max(0, parseInt(frequencyDays.trim(), 10));
+      const freq = frequencyDays.trim() === "" ? null : Math.max(0, parseInt(frequencyDays.trim(), 10));
 
       const payload: any = {
         household_id: house.id,
@@ -246,11 +248,7 @@ export default function PlantsPage() {
         payload.frequency_days = freq;
       }
 
-      const { data, error } = await supabase
-        .from("plants")
-        .insert(payload)
-        .select("*")
-        .single();
+      const { data, error } = await supabase.from("plants").insert(payload).select("*").single();
 
       if (error) throw error;
 
@@ -285,7 +283,6 @@ export default function PlantsPage() {
 
   return (
     <main style={pageStyle}>
-      {/* vars de cor igual ao login */}
       <style>{`
         :root{
           --pc-border:#e6e8eb;
@@ -363,7 +360,6 @@ export default function PlantsPage() {
 
             <button
               type="submit"
-              onClick={() => {}}
               disabled={!house || saving || name.trim().length === 0}
               style={{
                 ...primaryBtn,
@@ -391,9 +387,7 @@ export default function PlantsPage() {
 
           {loading && <div style={{ marginTop: 12, ...muted }}>Carregando...</div>}
 
-          {!loading && filtered.length === 0 && (
-            <div style={{ marginTop: 12, ...muted }}>Nenhuma planta cadastrada ainda.</div>
-          )}
+          {!loading && filtered.length === 0 && <div style={{ marginTop: 12, ...muted }}>Nenhuma planta cadastrada ainda.</div>}
 
           <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
             {filtered.map((p) => (
@@ -411,7 +405,7 @@ export default function PlantsPage() {
                 }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 950, fontSize: 15, color: "#111" }}>{p.name}</div>
+                  <div style={{ fontWeight: 950, fontSize: 15, color: "#111" }}>🌿 {p.name}</div>
                   <div style={{ marginTop: 6, fontSize: 13, color: "#374151", lineHeight: 1.35 }}>
                     {p.place ? `📍 ${p.place}` : "📍 (sem local)"}{" "}
                     {p.frequency_days != null ? (
@@ -422,28 +416,23 @@ export default function PlantsPage() {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => removePlant(p.id)}
-                  style={dangerBtn}
-                  title="Excluir"
-                >
-                  🗑️ Remover
-                </button>
+                <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                  <Link href={`/planta/${p.id}`} style={detailsBtnSmall} aria-label={`Ver detalhes de ${p.name}`}>
+                    Ver detalhes <span aria-hidden>→</span>
+                  </Link>
+
+                  <button type="button" onClick={() => removePlant(p.id)} style={dangerBtn} title="Excluir">
+                    🗑️ Remover
+                  </button>
+                </div>
               </div>
             ))}
           </div>
-
-          <div style={{ marginTop: 14, display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <Link href="/house" style={{ ...linkBtn, display: "inline-block" }}>
-              Casa
-            </Link>
-            <Link href="/dashboard" style={{ ...linkBtn, display: "inline-block" }}>
-              ← Dashboard
-            </Link>
-          </div>
         </div>
       </div>
+
+      {/* respiro p/ BottomNav */}
+      <div style={{ height: 120 }} />
     </main>
   );
 }

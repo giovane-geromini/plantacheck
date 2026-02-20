@@ -14,7 +14,6 @@ type Item = {
 const items: Item[] = [
   { href: "/dashboard", label: "Dashboard", icon: "🏠", match: (p) => p === "/" || p.startsWith("/dashboard") },
   { href: "/plants", label: "Plantas", icon: "🌿", match: (p) => p.startsWith("/plants") || p.startsWith("/planta") },
-  { href: "/house", label: "Casa", icon: "🏡", match: (p) => p.startsWith("/house") },
 ];
 
 export default function BottomNav() {
@@ -45,7 +44,7 @@ export default function BottomNav() {
     boxShadow: "0 10px 28px rgba(0,0,0,0.06)",
     padding: 8,
     display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
+    gridTemplateColumns: "repeat(2, 1fr)",
     gap: 8,
   };
 

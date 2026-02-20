@@ -123,18 +123,11 @@ type NextWaterInfo =
       isToday: boolean;
     };
 
-function getNextWaterInfo(args: {
-  frequencyDays: number | null;
-  lastWaterDateIso: string | null;
-}): NextWaterInfo {
+function getNextWaterInfo(args: { frequencyDays: number | null; lastWaterDateIso: string | null }): NextWaterInfo {
   const { frequencyDays, lastWaterDateIso } = args;
 
-  if (!frequencyDays || frequencyDays <= 0) {
-    return { kind: "noFrequency", text: "Frequência: —" };
-  }
-  if (!lastWaterDateIso) {
-    return { kind: "noLast", text: `Frequência: a cada ${frequencyDays} dia(s) • Próxima: —` };
-  }
+  if (!frequencyDays || frequencyDays <= 0) return { kind: "noFrequency", text: "Frequência: —" };
+  if (!lastWaterDateIso) return { kind: "noLast", text: `Frequência: a cada ${frequencyDays} dia(s) • Próxima: —` };
 
   const nextIso = addDaysToIso(lastWaterDateIso, frequencyDays);
   const todayIso = todayIsoBrasilia();
@@ -158,7 +151,6 @@ function getNextWaterInfo(args: {
   };
 }
 
-// ===== Entrada manual BR =====
 function parseBrDateToIso(br: string): string | null {
   const m = br.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return null;
@@ -193,13 +185,6 @@ function hhmmFromEventTime(t: string | null): string | null {
 }
 
 /** ======= UI base (igual ao Dashboard) ======= */
-const linkSmall: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 800,
-  textDecoration: "underline",
-  color: "#111",
-};
-
 const labelStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 800,
@@ -241,6 +226,23 @@ const secondaryBtn: React.CSSProperties = {
   color: "#111",
   fontWeight: 900,
   cursor: "pointer",
+};
+
+const backBtn: React.CSSProperties = {
+  height: 34,
+  padding: "0 12px",
+  borderRadius: 12,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#d7dbe0",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 950,
+  fontSize: 12,
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
 };
 
 function alertErrorBox(msg: string): React.CSSProperties {
@@ -487,20 +489,10 @@ export default function PlantDetailsPage() {
     setErr(null);
 
     try {
-      const delEv = await supabaseBrowser
-        .from("events")
-        .delete()
-        .eq("household_id", house.id)
-        .eq("plant_id", plant.id);
-
+      const delEv = await supabaseBrowser.from("events").delete().eq("household_id", house.id).eq("plant_id", plant.id);
       if (delEv.error) throw delEv.error;
 
-      const del = await supabaseBrowser
-        .from("plants")
-        .delete()
-        .eq("household_id", house.id)
-        .eq("id", plant.id);
-
+      const del = await supabaseBrowser.from("plants").delete().eq("household_id", house.id).eq("id", plant.id);
       if (del.error) throw del.error;
 
       router.replace("/dashboard");
@@ -667,7 +659,6 @@ export default function PlantDetailsPage() {
     }
   }
 
-  // loading
   if (loading) {
     return (
       <AppCard title="PlantaCheck" subtitle="Detalhes • Carregando..." icon="🌿" maxWidth={460}>
@@ -677,23 +668,17 @@ export default function PlantDetailsPage() {
     );
   }
 
-  // not found
   if (!plant) {
     return (
       <AppCard title="PlantaCheck" subtitle="Detalhes • Planta não encontrada" icon="🌿" maxWidth={460}>
         <AppCard noCenter style={{ padding: 14 }}>
           <div style={{ fontWeight: 950, fontSize: 16, color: "#111" }}>Planta não encontrada</div>
-          <div style={{ marginTop: 8, fontSize: 13, color: "#4b5563", fontWeight: 700 }}>
-            Essa planta pode ter sido removida.
-          </div>
+          <div style={{ marginTop: 8, fontSize: 13, color: "#4b5563", fontWeight: 700 }}>Essa planta pode ter sido removida.</div>
 
-          <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <Link href="/dashboard" style={linkSmall}>
-              ← Dashboard
-            </Link>
-            <Link href="/plants" style={linkSmall}>
-              🌿 Plantas
-            </Link>
+          <div style={{ marginTop: 12 }}>
+            <button type="button" onClick={() => router.back()} style={backBtn}>
+              ← Voltar
+            </button>
           </div>
         </AppCard>
         <div style={{ height: 120 }} />
@@ -701,32 +686,23 @@ export default function PlantDetailsPage() {
     );
   }
 
-  const lastLine = lastWaterDateIso
-    ? `${formatIsoToBrDate(lastWaterDateIso)}${lastWaterTime ? ` às ${lastWaterTime}` : ""}`
-    : "—";
-
+  const lastLine = lastWaterDateIso ? `${formatIsoToBrDate(lastWaterDateIso)}${lastWaterTime ? ` às ${lastWaterTime}` : ""}` : "—";
   const subtitle = `Detalhes • Casa: ${house?.name ?? "..."}`;
 
   return (
     <AppCard title={plant.name} subtitle={subtitle} icon="🌿" maxWidth={460}>
-      {/* topo: voltar + atalhos */}
+      {/* topo: voltar (como botão) */}
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-        <button type="button" onClick={() => router.back()} style={linkSmall}>
+        <button type="button" onClick={() => router.back()} style={backBtn}>
           ← Voltar
         </button>
-        <div style={{ display: "flex", gap: 12 }}>
-          <Link href="/dashboard" style={linkSmall}>
-            Dashboard
-          </Link>
-          <Link href="/plants" style={linkSmall}>
-            Plantas
-          </Link>
-        </div>
+
+        {/* espaço intencional: sem atalhos aqui (BottomNav já resolve) */}
+        <div />
       </div>
 
       {err ? <div style={alertErrorBox(err)}>{err}</div> : null}
 
-      {/* resumo */}
       {!isEditing ? (
         <AppCard noCenter style={{ padding: 14 }}>
           <div style={{ display: "grid", gap: 8 }}>
@@ -736,9 +712,7 @@ export default function PlantDetailsPage() {
             <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>
               💧 Última rega: <span style={{ color: "#111" }}>{lastLine}</span>
             </div>
-            <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 900 }}>
-              🗓️ {nextInfo.text}
-            </div>
+            <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 900 }}>🗓️ {nextInfo.text}</div>
           </div>
         </AppCard>
       ) : (
@@ -756,10 +730,7 @@ export default function PlantDetailsPage() {
               <select
                 value={editPlaceId}
                 onChange={(e) => setEditPlaceId(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  padding: "0 10px",
-                }}
+                style={{ ...inputStyle, padding: "0 10px" }}
               >
                 <option value="">(sem ambiente)</option>
                 {places.map((pl) => (
@@ -805,10 +776,7 @@ export default function PlantDetailsPage() {
               </span>
             </label>
 
-            {editError ? (
-              <div style={{ color: "#7a1b1b", fontWeight: 900, fontSize: 13 }}>{editError}</div>
-            ) : null}
-
+            {editError ? <div style={{ color: "#7a1b1b", fontWeight: 900, fontSize: 13 }}>{editError}</div> : null}
             {editMsg ? <div style={alertOkBox(editMsg)}>{editMsg}</div> : null}
           </div>
         </AppCard>
@@ -874,17 +842,10 @@ export default function PlantDetailsPage() {
 
             <label style={{ display: "grid", gap: 6 }}>
               <span style={labelStyle}>Hora (HH:mm)</span>
-              <input
-                value={manualTime}
-                onChange={(e) => setManualTime(e.target.value)}
-                placeholder="Ex.: 13:05"
-                style={inputStyle}
-              />
+              <input value={manualTime} onChange={(e) => setManualTime(e.target.value)} placeholder="Ex.: 13:05" style={inputStyle} />
             </label>
 
-            {manualError ? (
-              <div style={{ color: "#7a1b1b", fontWeight: 900, fontSize: 13 }}>{manualError}</div>
-            ) : null}
+            {manualError ? <div style={{ color: "#7a1b1b", fontWeight: 900, fontSize: 13 }}>{manualError}</div> : null}
 
             <button type="button" onClick={addManualWatering} style={primaryBtn}>
               ✅ Salvar rega manual
@@ -915,8 +876,7 @@ export default function PlantDetailsPage() {
         ) : (
           <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
             {events.map((e) => {
-              const typeLabel =
-                e.event_type === "water" ? "💧 Rega" : e.event_type === "sun" ? "☀️ Sol" : "⚙️ Config";
+              const typeLabel = e.event_type === "water" ? "💧 Rega" : e.event_type === "sun" ? "☀️ Sol" : "⚙️ Config";
 
               return (
                 <div
@@ -940,7 +900,7 @@ export default function PlantDetailsPage() {
                     {hhmmFromEventTime(e.event_time) ? ` às ${hhmmFromEventTime(e.event_time)}` : ""}
                   </div>
 
-                  <button type="button" onClick={() => removeEvent(e.id)} style={linkSmall} title="Remover evento">
+                  <button type="button" onClick={() => removeEvent(e.id)} style={linkBtn} title="Remover evento">
                     Remover
                   </button>
                 </div>
@@ -950,7 +910,6 @@ export default function PlantDetailsPage() {
         )}
       </AppCard>
 
-      {/* respiro p/ BottomNav */}
       <div style={{ height: 120 }} />
     </AppCard>
   );
