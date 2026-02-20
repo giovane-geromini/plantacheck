@@ -245,6 +245,24 @@ const backBtn: React.CSSProperties = {
   gap: 8,
 };
 
+/** ✅ FIX: estava sendo usado no botão "Remover evento" e não existia */
+const linkBtn: React.CSSProperties = {
+  height: 34,
+  padding: "0 12px",
+  borderRadius: 12,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#d7dbe0",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 950,
+  fontSize: 12,
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+};
+
 function alertErrorBox(msg: string): React.CSSProperties {
   return {
     marginBottom: 12,
