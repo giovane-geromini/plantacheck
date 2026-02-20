@@ -1,12 +1,10 @@
+// src/app/login/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import InstallPwaButton from "@/components/InstallPwaButton";
-
-// ...
-<InstallPwaButton />
 
 type Mode = "first" | "password";
 
@@ -70,8 +68,12 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
+      // ✅ Fluxo novo:
+      // Supabase -> /auth/callback (route.ts server) -> next=/auth/finish (page)
       const redirectTo =
-        typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent("/auth/finish")}`
+          : undefined;
 
       const { error } = await supabaseBrowser.auth.signInWithOtp({
         email: email.trim(),
@@ -139,8 +141,14 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
+      // ✅ Fluxo novo (reset):
+      // Supabase recovery -> /auth/callback (server) -> next=/auth/finish?next=/reset-password -> /reset-password
+      const nextAfterCallback = `/auth/finish?next=${encodeURIComponent("/reset-password")}`;
+
       const redirectTo =
-        typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined;
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextAfterCallback)}`
+          : undefined;
 
       const { error } = await supabaseBrowser.auth.resetPasswordForEmail(email.trim(), {
         redirectTo,
@@ -243,7 +251,11 @@ export default function LoginPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-          <button type="button" onClick={() => setMode("password")} style={tabStyle(mode === "password")}>
+          <button
+            type="button"
+            onClick={() => setMode("password")}
+            style={tabStyle(mode === "password")}
+          >
             Entrar (Senha)
           </button>
           <button type="button" onClick={() => setMode("first")} style={tabStyle(mode === "first")}>
@@ -276,7 +288,8 @@ export default function LoginPage() {
             </button>
 
             <p style={{ opacity: 0.85, fontSize: 13, lineHeight: 1.45, color: "#374151" }}>
-              Você vai receber um link para entrar. No primeiro acesso, vamos pedir para definir uma senha.
+              Você vai receber um link para entrar. No primeiro acesso, vamos pedir para definir uma
+              senha.
             </p>
           </form>
         ) : (

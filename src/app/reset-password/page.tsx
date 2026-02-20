@@ -1,21 +1,14 @@
 // src/app/reset-password/page.tsx
 "use client";
 
-import React, { Suspense, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import React, { Suspense, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
-
-function parseHashParams() {
-  if (typeof window === "undefined") return new URLSearchParams();
-  const hash = window.location.hash?.startsWith("#") ? window.location.hash.slice(1) : "";
-  return new URLSearchParams(hash);
-}
 
 function ResetPasswordInner() {
   const router = useRouter();
-  const sp = useSearchParams();
 
-  const [status, setStatus] = useState("Carregando...");
+  const [status, setStatus] = useState<string>("Carregando sessão...");
   const [ready, setReady] = useState(false);
 
   const [pass1, setPass1] = useState("");
@@ -25,62 +18,44 @@ function ResetPasswordInner() {
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const codeFromQuery = useMemo(() => sp.get("code"), [sp]);
-
   useEffect(() => {
     let cancelled = false;
-    const safeSet = (fn: () => void) => {
-      if (!cancelled) fn();
-    };
+    const safe = (fn: () => void) => !cancelled && fn();
 
     const run = async () => {
       try {
-        safeSet(() => {
+        safe(() => {
           setErr(null);
           setMsg(null);
           setReady(false);
-          setStatus("Validando link de redefinição...");
+          setStatus("Carregando sessão...");
         });
 
-        const code = codeFromQuery;
-
-        // Alguns fluxos chegam com tokens no hash
-        const hp = parseHashParams();
-        const access_token = hp.get("access_token");
-        const refresh_token = hp.get("refresh_token");
-
-        if (code) {
-          const { error } = await supabaseBrowser.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-        } else if (access_token && refresh_token) {
-          const { error } = await supabaseBrowser.auth.setSession({ access_token, refresh_token });
-          if (error) throw error;
-        }
-
-        // limpa URL para não reprocessar
-        try {
-          const cleanUrl = `${window.location.origin}/reset-password`;
-          window.history.replaceState({}, "", cleanUrl);
-        } catch {}
-
-        safeSet(() => setStatus("Carregando sessão..."));
+        // ✅ Importante:
+        // Neste ponto o usuário deve ter chegado aqui via:
+        // /auth/callback (server) -> exchangeCodeForSession -> cookies -> redirect next=/reset-password
+        // Então aqui só checamos sessão.
         const { data, error } = await supabaseBrowser.auth.getSession();
         if (error) throw error;
 
         const user = data.session?.user;
         if (!user) {
-          safeSet(() => setStatus("Sessão não encontrada. Solicite um novo link em /login."));
+          safe(() => {
+            setStatus("Sessão não encontrada. Solicite um novo link em /login.");
+            setReady(false);
+          });
           return;
         }
 
-        safeSet(() => {
+        safe(() => {
           setStatus("OK! Agora defina sua nova senha.");
           setReady(true);
         });
       } catch (e: any) {
-        safeSet(() => {
-          setStatus(null as any);
-          setErr(e?.message ?? "Link inválido/expirado. Solicite novamente em /login.");
+        safe(() => {
+          setStatus("");
+          setErr(e?.message ?? "Não foi possível validar sua sessão. Solicite um novo link em /login.");
+          setReady(false);
         });
       }
     };
@@ -89,7 +64,7 @@ function ResetPasswordInner() {
     return () => {
       cancelled = true;
     };
-  }, [codeFromQuery]);
+  }, []);
 
   async function salvarNovaSenha(e: React.FormEvent) {
     e.preventDefault();
@@ -176,6 +151,15 @@ function ResetPasswordInner() {
               className="h-11 rounded-lg border bg-black text-white font-semibold disabled:opacity-60"
             >
               {loading ? "Salvando..." : "Salvar nova senha"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => router.replace("/login")}
+              disabled={loading}
+              className="h-11 rounded-lg border bg-white text-black font-semibold disabled:opacity-60"
+            >
+              Voltar para o login
             </button>
           </form>
         )}
