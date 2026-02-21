@@ -1,29 +1,46 @@
+// src/app/planta/[id]/page.tsx
 "use client";
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import { getOrCreateHousehold, type Household } from "@/lib/household";
+import AppCard from "@/components/AppCard";
 
-type Watering = {
-  dateIso: string; // YYYY-MM-DD
-  time: string; // HH:mm
+type DbPlant = {
+  id: string;
+  household_id: string;
+  name: string;
+  place: string | null; // legado texto (fallback)
+  place_id: string | null; // relacional
+  frequency_days?: number | null;
+
+  created_at?: string;
+  updated_at?: string;
+
+  [key: string]: any;
 };
 
-type Plant = {
+type DbPlace = {
   id: string;
+  household_id: string;
   name: string;
-  place?: string;
+};
 
-  lastWateredDateIso?: string;
-  lastWateredTime?: string;
-
-  waterings: Watering[];
-
-  frequencyDays?: number;
+type DbEvent = {
+  id: string;
+  household_id: string;
+  plant_id: string;
+  event_type: "water" | "sun" | "config_change";
+  event_date: string; // YYYY-MM-DD
+  event_time: string | null; // HH:mm or HH:mm:ss
+  created_at: string;
+  created_by: string | null;
+  meta: any;
 };
 
 const TZ_BRASILIA = "America/Sao_Paulo";
-const STORAGE_KEY = "plantacheck:v4:plants";
 
 function nowInBrasiliaParts() {
   const now = new Date();
@@ -106,15 +123,13 @@ type NextWaterInfo =
       isToday: boolean;
     };
 
-function getNextWaterInfo(p: Plant): NextWaterInfo {
-  if (!p.frequencyDays || p.frequencyDays <= 0) {
-    return { kind: "noFrequency", text: "Frequência: —" };
-  }
-  if (!p.lastWateredDateIso) {
-    return { kind: "noLast", text: `Frequência: a cada ${p.frequencyDays} dia(s) • Próxima: —` };
-  }
+function getNextWaterInfo(args: { frequencyDays: number | null; lastWaterDateIso: string | null }): NextWaterInfo {
+  const { frequencyDays, lastWaterDateIso } = args;
 
-  const nextIso = addDaysToIso(p.lastWateredDateIso, p.frequencyDays);
+  if (!frequencyDays || frequencyDays <= 0) return { kind: "noFrequency", text: "Frequência: —" };
+  if (!lastWaterDateIso) return { kind: "noLast", text: `Frequência: a cada ${frequencyDays} dia(s) • Próxima: —` };
+
+  const nextIso = addDaysToIso(lastWaterDateIso, frequencyDays);
   const todayIso = todayIsoBrasilia();
   const delta = diffDaysIso(todayIso, nextIso);
 
@@ -136,29 +151,6 @@ function getNextWaterInfo(p: Plant): NextWaterInfo {
   };
 }
 
-function loadPlants(): Plant[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as Plant[];
-  } catch {
-    return [];
-  }
-}
-
-function savePlants(plants: Plant[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(plants));
-  } catch {}
-}
-
-function wateringKey(w: Watering) {
-  return `${w.dateIso}T${w.time}`;
-}
-
-// ===== Entrada manual BR =====
 function parseBrDateToIso(br: string): string | null {
   const m = br.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return null;
@@ -187,27 +179,140 @@ function isValidTimeHHmm(t: string): boolean {
   return true;
 }
 
-function compareWateringsDesc(a: Watering, b: Watering) {
-  const aKey = `${a.dateIso}T${a.time}`;
-  const bKey = `${b.dateIso}T${b.time}`;
-  return bKey.localeCompare(aKey);
+function hhmmFromEventTime(t: string | null): string | null {
+  if (!t) return null;
+  return String(t).slice(0, 5);
+}
+
+/** ======= UI base (igual ao Dashboard) ======= */
+const labelStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 800,
+  color: "#111",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  height: 44,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#d7dbe0",
+  padding: "0 12px",
+  background: "#fff",
+  color: "#111",
+  outline: "none",
+};
+
+const primaryBtn: React.CSSProperties = {
+  width: "100%",
+  height: 46,
+  borderRadius: 12,
+  border: "none",
+  background: "#111",
+  color: "#fff",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const secondaryBtn: React.CSSProperties = {
+  width: "100%",
+  height: 44,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#d7dbe0",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const backBtn: React.CSSProperties = {
+  height: 34,
+  padding: "0 12px",
+  borderRadius: 12,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#d7dbe0",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 950,
+  fontSize: 12,
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+/** ✅ FIX: estilo de "link" para ações pequenas (ex.: Remover evento) */
+const linkBtn: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  padding: 0,
+  cursor: "pointer",
+  textDecoration: "underline",
+  font: "inherit",
+  fontWeight: 900,
+  color: "#111",
+};
+
+function alertErrorBox(msg: string): React.CSSProperties {
+  return {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    background: "#ffe9e9",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#ffd0d0",
+    color: "#7a1b1b",
+    fontWeight: 800,
+    fontSize: 13,
+    lineHeight: 1.35,
+  };
+}
+
+function alertOkBox(msg: string): React.CSSProperties {
+  return {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    background: "#e9fff0",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#cfe9d7",
+    color: "#14532d",
+    fontWeight: 800,
+    fontSize: 13,
+    lineHeight: 1.35,
+  };
 }
 
 export default function PlantDetailsPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const id = params?.id;
+  const plantId = params?.id;
 
-  const [plants, setPlants] = useState<Plant[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const [house, setHouse] = useState<Household | null>(null);
+  const [plant, setPlant] = useState<DbPlant | null>(null);
+  const [places, setPlaces] = useState<DbPlace[]>([]);
+  const [events, setEvents] = useState<DbEvent[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
 
   // edição
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState("");
-  const [editPlace, setEditPlace] = useState("");
+  const [editPlaceId, setEditPlaceId] = useState<string>("");
   const [editFrequency, setEditFrequency] = useState<string>("");
   const [editError, setEditError] = useState<string | null>(null);
   const [editMsg, setEditMsg] = useState<string | null>(null);
+
+  // criação rápida de ambiente
+  const [newPlaceName, setNewPlaceName] = useState("");
+  const [creatingPlace, setCreatingPlace] = useState(false);
 
   // rega manual
   const [showManual, setShowManual] = useState(false);
@@ -215,56 +320,139 @@ export default function PlantDetailsPage() {
   const [manualTime, setManualTime] = useState("");
   const [manualError, setManualError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setPlants(loadPlants());
-    setHydrated(true);
-  }, []);
+  async function loadAll() {
+    if (!plantId) return;
 
-  const plant = useMemo(() => plants.find((p) => p.id === id), [plants, id]);
+    setErr(null);
+    setLoading(true);
+
+    try {
+      const h = await getOrCreateHousehold();
+      setHouse(h);
+
+      const placesRes = await supabaseBrowser
+        .from("places")
+        .select("id, household_id, name")
+        .eq("household_id", h.id)
+        .order("created_at", { ascending: true });
+
+      if (placesRes.error) throw placesRes.error;
+      setPlaces((placesRes.data ?? []) as DbPlace[]);
+
+      const plantRes = await supabaseBrowser
+        .from("plants")
+        .select("*")
+        .eq("id", plantId)
+        .eq("household_id", h.id)
+        .maybeSingle();
+
+      if (plantRes.error) throw plantRes.error;
+
+      if (!plantRes.data) {
+        setPlant(null);
+        setEvents([]);
+        return;
+      }
+
+      setPlant(plantRes.data as DbPlant);
+
+      const evRes = await supabaseBrowser
+        .from("events")
+        .select("*")
+        .eq("household_id", h.id)
+        .eq("plant_id", plantId)
+        .order("event_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(500);
+
+      if (evRes.error) throw evRes.error;
+      setEvents((evRes.data ?? []) as DbEvent[]);
+    } catch (e: any) {
+      setErr(e?.message ?? "Erro ao carregar detalhes.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plantId]);
+
+  const placeNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of places) map.set(p.id, p.name);
+    return map;
+  }, [places]);
+
+  const lastWaterEvent = useMemo(() => {
+    return events.find((e) => e.event_type === "water") ?? null;
+  }, [events]);
+
+  const lastWaterDateIso = lastWaterEvent?.event_date ?? null;
+  const lastWaterTime = hhmmFromEventTime(lastWaterEvent?.event_time ?? null);
+
+  const frequencyDays = useMemo(() => {
+    const v = typeof plant?.frequency_days === "number" ? plant.frequency_days : null;
+    if (!v || v <= 0) return null;
+    return v;
+  }, [plant?.frequency_days]);
+
+  const placeLabel = useMemo(() => {
+    if (!plant) return "—";
+    const byId = plant.place_id ? placeNameById.get(plant.place_id) : null;
+    return byId ?? plant.place ?? "—";
+  }, [plant, placeNameById]);
+
+  const nextInfo = useMemo(() => {
+    return getNextWaterInfo({ frequencyDays, lastWaterDateIso });
+  }, [frequencyDays, lastWaterDateIso]);
 
   useEffect(() => {
     if (!plant) return;
 
     setEditName(plant.name);
-    setEditPlace(plant.place ?? "");
-    setEditFrequency(plant.frequencyDays ? String(plant.frequencyDays) : "");
+    setEditPlaceId(plant.place_id ?? "");
+    setEditFrequency(frequencyDays ? String(frequencyDays) : "");
 
     const now = nowInBrasiliaParts();
     setManualDateBr(formatIsoToBrDate(now.dateIso));
     setManualTime(now.timeBr);
-  }, [plant?.id]);
+  }, [plant?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function persist(next: Plant[]) {
-    setPlants(next);
-    savePlants(next);
-  }
+  async function waterNow() {
+    if (!house || !plant) return;
 
-  function waterNow() {
-    if (!plant) return;
-
-    const { dateIso, timeBr } = nowInBrasiliaParts();
-    const newW: Watering = { dateIso, time: timeBr };
-
-    const next = plants.map((p) => {
-      if (p.id !== plant.id) return p;
-      const merged = [newW, ...p.waterings].sort(compareWateringsDesc);
-      const newest = merged[0];
-      return {
-        ...p,
-        lastWateredDateIso: newest.dateIso,
-        lastWateredTime: newest.time,
-        waterings: merged,
-      };
-    });
-
-    persist(next);
+    setErr(null);
     setEditMsg(null);
-    setShowManual(false);
     setManualError(null);
+
+    try {
+      const { data: userData } = await supabaseBrowser.auth.getUser();
+      const userId = userData?.user?.id ?? null;
+
+      const { dateIso, timeBr } = nowInBrasiliaParts();
+
+      const ins = await supabaseBrowser.from("events").insert({
+        household_id: house.id,
+        plant_id: plant.id,
+        event_type: "water",
+        event_date: dateIso,
+        event_time: timeBr,
+        created_by: userId,
+        meta: {},
+      });
+
+      if (ins.error) throw ins.error;
+
+      await loadAll();
+    } catch (e: any) {
+      setErr(e?.message ?? "Erro ao registrar rega.");
+    }
   }
 
-  function addManualWatering() {
-    if (!plant) return;
+  async function addManualWatering() {
+    if (!house || !plant) return;
 
     const iso = parseBrDateToIso(manualDateBr);
     if (!iso) {
@@ -277,36 +465,52 @@ export default function PlantDetailsPage() {
     }
 
     setManualError(null);
+    setErr(null);
 
-    const newW: Watering = { dateIso: iso, time: manualTime.trim() };
+    try {
+      const { data: userData } = await supabaseBrowser.auth.getUser();
+      const userId = userData?.user?.id ?? null;
 
-    const next = plants.map((p) => {
-      if (p.id !== plant.id) return p;
+      const ins = await supabaseBrowser.from("events").insert({
+        household_id: house.id,
+        plant_id: plant.id,
+        event_type: "water",
+        event_date: iso,
+        event_time: manualTime.trim(),
+        created_by: userId,
+        meta: { manual: true },
+      });
 
-      const merged = [newW, ...p.waterings].sort(compareWateringsDesc);
-      const newest = merged[0];
+      if (ins.error) throw ins.error;
 
-      return {
-        ...p,
-        lastWateredDateIso: newest.dateIso,
-        lastWateredTime: newest.time,
-        waterings: merged,
-      };
-    });
+      setEditMsg("Rega manual registrada.");
+      setShowManual(false);
 
-    persist(next);
-    setEditMsg("Rega manual registrada.");
-    setShowManual(false);
+      await loadAll();
+    } catch (e: any) {
+      setErr(e?.message ?? "Erro ao registrar rega manual.");
+    }
   }
 
-  function removePlant() {
-    if (!plant) return;
+  async function removePlant() {
+    if (!house || !plant) return;
+
     const ok = window.confirm(`Remover "${plant.name}"?`);
     if (!ok) return;
 
-    const next = plants.filter((p) => p.id !== plant.id);
-    persist(next);
-    router.push("/");
+    setErr(null);
+
+    try {
+      const delEv = await supabaseBrowser.from("events").delete().eq("household_id", house.id).eq("plant_id", plant.id);
+      if (delEv.error) throw delEv.error;
+
+      const del = await supabaseBrowser.from("plants").delete().eq("household_id", house.id).eq("id", plant.id);
+      if (del.error) throw del.error;
+
+      router.replace("/dashboard");
+    } catch (e: any) {
+      setErr(e?.message ?? "Erro ao remover planta.");
+    }
   }
 
   function startEdit() {
@@ -314,9 +518,6 @@ export default function PlantDetailsPage() {
     setIsEditing(true);
     setEditError(null);
     setEditMsg(null);
-    setEditName(plant.name);
-    setEditPlace(plant.place ?? "");
-    setEditFrequency(plant.frequencyDays ? String(plant.frequencyDays) : "");
   }
 
   function cancelEdit() {
@@ -325,417 +526,403 @@ export default function PlantDetailsPage() {
     setEditError(null);
     setEditMsg(null);
     setEditName(plant.name);
-    setEditPlace(plant.place ?? "");
-    setEditFrequency(plant.frequencyDays ? String(plant.frequencyDays) : "");
+    setEditPlaceId(plant.place_id ?? "");
+    setEditFrequency(frequencyDays ? String(frequencyDays) : "");
   }
 
-  function saveEdit() {
-    if (!plant) return;
+  async function createPlaceQuick() {
+    if (!house) return;
+
+    const name = newPlaceName.trim();
+    if (!name) return;
+
+    setCreatingPlace(true);
+    setErr(null);
+
+    try {
+      const { data: userData } = await supabaseBrowser.auth.getUser();
+      const userId = userData?.user?.id ?? null;
+
+      const ins = await supabaseBrowser
+        .from("places")
+        .insert({
+          household_id: house.id,
+          name,
+          created_by: userId,
+        })
+        .select("id, household_id, name")
+        .single();
+
+      if (ins.error) throw ins.error;
+
+      const created = ins.data as DbPlace;
+      setPlaces((prev) => [...prev, created]);
+
+      setNewPlaceName("");
+      setEditPlaceId(created.id);
+    } catch (e: any) {
+      setErr(e?.message ?? "Erro ao criar ambiente.");
+    } finally {
+      setCreatingPlace(false);
+    }
+  }
+
+  async function saveEdit() {
+    if (!house || !plant) return;
 
     const nameTrim = editName.trim();
-    const placeTrim = editPlace.trim();
-
     if (!nameTrim) {
       setEditError("O nome da planta não pode ficar vazio.");
       return;
     }
 
-    let freq: number | undefined = undefined;
+    let freq: number | null = null;
     const freqTrim = editFrequency.trim();
     if (freqTrim) {
       const n = Number(freqTrim);
       if (!Number.isFinite(n) || n <= 0) {
-        setEditError("Frequência inválida. Use um número de dias maior que 0 (ex.: 3, 7, 14).");
+        setEditError("Frequência inválida. Use um número de dias > 0 (ex.: 3, 7, 14).");
         return;
       }
       freq = Math.floor(n);
     }
 
-    const next = plants.map((p) => {
-      if (p.id !== plant.id) return p;
-      return {
-        ...p,
-        name: nameTrim,
-        place: placeTrim ? placeTrim : undefined,
-        frequencyDays: freq,
-      };
-    });
-
-    persist(next);
-    setIsEditing(false);
     setEditError(null);
-    setEditMsg("Alterações salvas.");
+    setErr(null);
+
+    const nextPlaceId = editPlaceId.trim() ? editPlaceId.trim() : null;
+    const nextPlaceText = nextPlaceId ? placeNameById.get(nextPlaceId) ?? null : null;
+
+    try {
+      const upd = await supabaseBrowser
+        .from("plants")
+        .update({
+          name: nameTrim,
+          frequency_days: freq,
+          place_id: nextPlaceId,
+          place: nextPlaceText,
+        })
+        .eq("household_id", house.id)
+        .eq("id", plant.id)
+        .select("*")
+        .single();
+
+      if (upd.error) throw upd.error;
+
+      const { data: userData } = await supabaseBrowser.auth.getUser();
+      const userId = userData?.user?.id ?? null;
+
+      const now = nowInBrasiliaParts();
+
+      const meta = {
+        from: {
+          name: plant.name,
+          frequency_days: plant.frequency_days ?? null,
+          place_id: plant.place_id ?? null,
+        },
+        to: {
+          name: nameTrim,
+          frequency_days: freq,
+          place_id: nextPlaceId,
+        },
+      };
+
+      const insEv = await supabaseBrowser.from("events").insert({
+        household_id: house.id,
+        plant_id: plant.id,
+        event_type: "config_change",
+        event_date: now.dateIso,
+        event_time: now.timeBr,
+        created_by: userId,
+        meta,
+      });
+
+      if (insEv.error) throw insEv.error;
+
+      setIsEditing(false);
+      setEditMsg("Alterações salvas.");
+      await loadAll();
+    } catch (e: any) {
+      setErr(e?.message ?? "Erro ao salvar alterações.");
+    }
   }
 
-  function removeWatering(targetKey: string) {
-    if (!plant) return;
+  async function removeEvent(eventId: string) {
+    if (!house || !plant) return;
 
-    const ok = window.confirm("Remover este registro do histórico?");
+    const ok = window.confirm("Remover este evento? (rega/sol/config)");
     if (!ok) return;
 
-    const next = plants.map((p) => {
-      if (p.id !== plant.id) return p;
+    setErr(null);
 
-      const filtered = p.waterings.filter((w) => wateringKey(w) !== targetKey).sort(compareWateringsDesc);
+    try {
+      const del = await supabaseBrowser
+        .from("events")
+        .delete()
+        .eq("household_id", house.id)
+        .eq("plant_id", plant.id)
+        .eq("id", eventId);
 
-      if (filtered.length === 0) {
-        return { ...p, waterings: filtered, lastWateredDateIso: undefined, lastWateredTime: undefined };
-      }
+      if (del.error) throw del.error;
 
-      const newest = filtered[0];
-      return {
-        ...p,
-        waterings: filtered,
-        lastWateredDateIso: newest.dateIso,
-        lastWateredTime: newest.time,
-      };
-    });
-
-    persist(next);
-    setEditMsg(null);
+      await loadAll();
+    } catch (e: any) {
+      setErr(e?.message ?? "Erro ao remover evento.");
+    }
   }
 
-  if (!hydrated) {
+  if (loading) {
     return (
-      <main style={{ padding: "clamp(16px, 3vw, 32px)", fontFamily: "Arial, sans-serif" }}>
-        <p>Carregando...</p>
-      </main>
+      <AppCard title="PlantaCheck" subtitle="Detalhes • Carregando..." icon="🌿" maxWidth={460}>
+        <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>Carregando...</div>
+        <div style={{ height: 120 }} />
+      </AppCard>
     );
   }
 
   if (!plant) {
     return (
-      <main
-        style={{
-          padding: "clamp(16px, 3vw, 32px)",
-          fontFamily: "Arial, sans-serif",
-          maxWidth: 900,
-          margin: "0 auto",
-        }}
-      >
-        <h1 style={{ marginTop: 0 }}>Planta não encontrada</h1>
-        <p>Essa planta pode ter sido removida.</p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link href="/" style={{ textDecoration: "none" }}>
-            Página Inicial
-          </Link>
-        </div>
-      </main>
+      <AppCard title="PlantaCheck" subtitle="Detalhes • Planta não encontrada" icon="🌿" maxWidth={460}>
+        <AppCard noCenter style={{ padding: 14 }}>
+          <div style={{ fontWeight: 950, fontSize: 16, color: "#111" }}>Planta não encontrada</div>
+          <div style={{ marginTop: 8, fontSize: 13, color: "#4b5563", fontWeight: 700 }}>Essa planta pode ter sido removida.</div>
+
+          <div style={{ marginTop: 12 }}>
+            <button type="button" onClick={() => router.back()} style={backBtn}>
+              ← Voltar
+            </button>
+          </div>
+        </AppCard>
+        <div style={{ height: 120 }} />
+      </AppCard>
     );
   }
 
-  const lastLine = plant.lastWateredDateIso
-    ? `${formatIsoToBrDate(plant.lastWateredDateIso)} às ${plant.lastWateredTime ?? "—"}`
-    : "—";
-
-  const nextInfo = getNextWaterInfo(plant);
+  const lastLine = lastWaterDateIso ? `${formatIsoToBrDate(lastWaterDateIso)}${lastWaterTime ? ` às ${lastWaterTime}` : ""}` : "—";
+  const subtitle = `Detalhes • Casa: ${house?.name ?? "..."}`;
 
   return (
-    <main
-      style={{
-        padding: "clamp(16px, 3vw, 32px)",
-        fontFamily: "Arial, sans-serif",
-        maxWidth: 900,
-        margin: "0 auto",
-      }}
-    >
-      {/* ✅ topo: Voltar + Página Inicial */}
-      <div style={{ marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button
-          onClick={() => router.back()}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-            background: "#fff",
-          }}
-        >
+    <AppCard title={plant.name} subtitle={subtitle} icon="🌿" maxWidth={460}>
+      {/* topo: voltar (como botão) */}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+        <button type="button" onClick={() => router.back()} style={backBtn}>
           ← Voltar
         </button>
 
-        <Link
-          href="/"
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            background: "#f7f7f7",
-            textDecoration: "none",
-            color: "inherit",
-            display: "inline-flex",
-            alignItems: "center",
-          }}
-        >
-          🏠 Página Inicial
-        </Link>
+        {/* espaço intencional: sem atalhos aqui (BottomNav já resolve) */}
+        <div />
       </div>
 
-      <header style={{ marginBottom: 16 }}>
-        {!isEditing ? (
-          <>
-            <h1 style={{ margin: 0 }}>{plant.name}</h1>
+      {err ? <div style={alertErrorBox(err)}>{err}</div> : null}
 
-            <p style={{ marginTop: 8, color: "#444" }}>
-              📍 Local: <strong>{plant.place ?? "—"}</strong>
-            </p>
-
-            <p style={{ marginTop: 6, color: "#444" }}>
-              💧 Última rega: <strong>{lastLine}</strong>
-            </p>
-
-            <p style={{ marginTop: 6, color: "#444" }}>
-              🗓️ <strong>{nextInfo.text}</strong>
-            </p>
-          </>
-        ) : (
-          <>
-            <h1 style={{ margin: 0 }}>Editar planta</h1>
-            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Nome *</span>
-                <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
-                />
-              </label>
-
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Local (opcional)</span>
-                <input
-                  value={editPlace}
-                  onChange={(e) => setEditPlace(e.target.value)}
-                  style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
-                />
-              </label>
-
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Frequência de rega (dias)</span>
-                <input
-                  value={editFrequency}
-                  onChange={(e) => setEditFrequency(e.target.value)}
-                  inputMode="numeric"
-                  placeholder="Ex.: 3, 7, 14..."
-                  style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
-                />
-                <span style={{ fontSize: 13, color: "#666" }}>
-                  Dica: deixe em branco se não quiser controlar por frequência.
-                </span>
-              </label>
-
-              {editError && <div style={{ color: "crimson", fontSize: 14 }}>{editError}</div>}
-              {editMsg && <div style={{ color: "#2e7d32", fontSize: 14 }}>{editMsg}</div>}
+      {!isEditing ? (
+        <AppCard noCenter style={{ padding: 14 }}>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>
+              📍 Ambiente: <span style={{ color: "#111" }}>{placeLabel}</span>
             </div>
-          </>
-        )}
-      </header>
+            <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 800 }}>
+              💧 Última rega: <span style={{ color: "#111" }}>{lastLine}</span>
+            </div>
+            <div style={{ fontSize: 13, color: "#4b5563", fontWeight: 900 }}>🗓️ {nextInfo.text}</div>
+          </div>
+        </AppCard>
+      ) : (
+        <AppCard noCenter style={{ padding: 14 }}>
+          <div style={{ fontWeight: 950, fontSize: 16, color: "#111" }}>Editar planta</div>
 
-      <section
-        style={{
-          border: "1px solid #ddd",
-          borderRadius: 12,
-          padding: 16,
-          background: "white",
-          marginBottom: 16,
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <button
-          onClick={waterNow}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-            background: "#f7f7f7",
-          }}
-        >
-          Reguei agora
-        </button>
-
-        <button
-          onClick={() => {
-            setShowManual((v) => !v);
-            setManualError(null);
-            setEditMsg(null);
-          }}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-            background: "#fff",
-          }}
-        >
-          + Registrar rega manual
-        </button>
-
-        {!isEditing ? (
-          <button
-            onClick={startEdit}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              cursor: "pointer",
-              background: "#fff",
-            }}
-          >
-            ✏️ Editar
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={saveEdit}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                cursor: "pointer",
-                background: "#f7f7f7",
-              }}
-            >
-              ✅ Salvar
-            </button>
-            <button
-              onClick={cancelEdit}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                cursor: "pointer",
-                background: "#fff",
-              }}
-            >
-              ❌ Cancelar
-            </button>
-          </>
-        )}
-
-        <button
-          onClick={removePlant}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-            background: "#fff",
-            marginLeft: "auto",
-          }}
-        >
-          🗑️ Remover planta
-        </button>
-      </section>
-
-      {showManual && (
-        <section
-          style={{
-            border: "1px solid #ddd",
-            borderRadius: 12,
-            padding: 16,
-            background: "white",
-            marginBottom: 16,
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>Registrar rega manual</h2>
-
-          <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
             <label style={{ display: "grid", gap: 6 }}>
-              <span>Data (dd/mm/aaaa)</span>
+              <span style={labelStyle}>Nome *</span>
+              <input value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} />
+            </label>
+
+            <div style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle}>Ambiente</span>
+              <select
+                value={editPlaceId}
+                onChange={(e) => setEditPlaceId(e.target.value)}
+                style={{ ...inputStyle, padding: "0 10px" }}
+              >
+                <option value="">(sem ambiente)</option>
+                {places.map((pl) => (
+                  <option key={pl.id} value={pl.id}>
+                    {pl.name}
+                  </option>
+                ))}
+              </select>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                <input
+                  value={newPlaceName}
+                  onChange={(e) => setNewPlaceName(e.target.value)}
+                  placeholder="Criar novo ambiente..."
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  onClick={createPlaceQuick}
+                  disabled={creatingPlace || newPlaceName.trim().length === 0}
+                  style={{
+                    ...secondaryBtn,
+                    opacity: creatingPlace || newPlaceName.trim().length === 0 ? 0.7 : 1,
+                    cursor: creatingPlace || newPlaceName.trim().length === 0 ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {creatingPlace ? "Criando..." : "+ Ambiente"}
+                </button>
+              </div>
+            </div>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle}>Frequência de rega (dias)</span>
+              <input
+                value={editFrequency}
+                onChange={(e) => setEditFrequency(e.target.value)}
+                inputMode="numeric"
+                placeholder="Ex.: 3, 7, 14..."
+                style={inputStyle}
+              />
+              <span style={{ fontSize: 13, color: "#4b5563", fontWeight: 700 }}>
+                Dica: deixe em branco se não quiser controlar por frequência.
+              </span>
+            </label>
+
+            {editError ? <div style={{ color: "#7a1b1b", fontWeight: 900, fontSize: 13 }}>{editError}</div> : null}
+            {editMsg ? <div style={alertOkBox(editMsg)}>{editMsg}</div> : null}
+          </div>
+        </AppCard>
+      )}
+
+      {/* ações */}
+      <AppCard noCenter style={{ padding: 14, marginTop: 12 }}>
+        <div style={{ display: "grid", gap: 10 }}>
+          <button type="button" onClick={waterNow} style={primaryBtn}>
+            💧 Reguei agora
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowManual((v) => !v);
+              setManualError(null);
+              setEditMsg(null);
+            }}
+            style={secondaryBtn}
+          >
+            + Registrar rega manual
+          </button>
+
+          {!isEditing ? (
+            <button type="button" onClick={startEdit} style={secondaryBtn}>
+              ✏️ Editar
+            </button>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button type="button" onClick={saveEdit} style={primaryBtn}>
+                ✅ Salvar
+              </button>
+              <button type="button" onClick={cancelEdit} style={secondaryBtn}>
+                ❌ Cancelar
+              </button>
+            </div>
+          )}
+
+          <button type="button" onClick={removePlant} style={{ ...secondaryBtn, borderColor: "#ffd0d0" }}>
+            🗑️ Remover planta
+          </button>
+
+          {editMsg && !isEditing ? <div style={alertOkBox(editMsg)}>{editMsg}</div> : null}
+        </div>
+      </AppCard>
+
+      {/* rega manual */}
+      {showManual ? (
+        <AppCard noCenter style={{ padding: 14, marginTop: 12 }}>
+          <div style={{ fontWeight: 950, fontSize: 16, color: "#111" }}>Registrar rega manual</div>
+
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle}>Data (dd/mm/aaaa)</span>
               <input
                 value={manualDateBr}
                 onChange={(e) => setManualDateBr(e.target.value)}
                 placeholder="Ex.: 13/02/2026"
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
+                style={inputStyle}
               />
             </label>
 
             <label style={{ display: "grid", gap: 6 }}>
-              <span>Hora (HH:mm)</span>
-              <input
-                value={manualTime}
-                onChange={(e) => setManualTime(e.target.value)}
-                placeholder="Ex.: 13:05"
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
-              />
+              <span style={labelStyle}>Hora (HH:mm)</span>
+              <input value={manualTime} onChange={(e) => setManualTime(e.target.value)} placeholder="Ex.: 13:05" style={inputStyle} />
             </label>
 
-            {manualError && <div style={{ color: "crimson", fontSize: 14 }}>{manualError}</div>}
+            {manualError ? <div style={{ color: "#7a1b1b", fontWeight: 900, fontSize: 13 }}>{manualError}</div> : null}
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={addManualWatering}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ccc",
-                  cursor: "pointer",
-                  background: "#f7f7f7",
-                }}
-              >
-                ✅ Salvar rega manual
-              </button>
+            <button type="button" onClick={addManualWatering} style={primaryBtn}>
+              ✅ Salvar rega manual
+            </button>
 
-              <button
-                onClick={() => {
-                  setShowManual(false);
-                  setManualError(null);
-                }}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ccc",
-                  cursor: "pointer",
-                  background: "#fff",
-                }}
-              >
-                Cancelar
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowManual(false);
+                setManualError(null);
+              }}
+              style={secondaryBtn}
+            >
+              Cancelar
+            </button>
           </div>
-        </section>
-      )}
+        </AppCard>
+      ) : null}
 
-      <section style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16, background: "white" }}>
-        <h2 style={{ marginTop: 0 }}>Histórico de regas</h2>
+      {/* eventos */}
+      <AppCard noCenter style={{ padding: 14, marginTop: 12 }}>
+        <div style={{ fontWeight: 950, fontSize: 16, color: "#111" }}>Eventos</div>
 
-        {plant.waterings.length === 0 ? (
-          <p>Nenhum registro ainda. Use “Reguei agora” ou “Registrar rega manual”.</p>
+        {events.length === 0 ? (
+          <div style={{ marginTop: 10, fontSize: 13, color: "#4b5563", fontWeight: 700 }}>
+            Nenhum evento ainda. Use “Reguei agora” ou ações em lote no Dashboard.
+          </div>
         ) : (
-          <ul style={{ paddingLeft: 18, margin: 0, display: "grid", gap: 8 }}>
-            {plant.waterings.map((w, idx) => {
-              const key = wateringKey(w);
-              return (
-                <li key={`${key}-${idx}`} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <span>
-                    {formatIsoToBrDate(w.dateIso)} às {w.time}
-                  </span>
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            {events.map((e) => {
+              const typeLabel = e.event_type === "water" ? "💧 Rega" : e.event_type === "sun" ? "☀️ Sol" : "⚙️ Config";
 
-                  <button
-                    onClick={() => removeWatering(key)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 10,
-                      border: "1px solid #ccc",
-                      cursor: "pointer",
-                      background: "#fff",
-                    }}
-                    title="Remover registro"
-                  >
+              return (
+                <div
+                  key={e.id}
+                  style={{
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderStyle: "solid",
+                    borderColor: "#e6e8eb",
+                    padding: 12,
+                    background: "#fff",
+                    display: "flex",
+                    gap: 10,
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#111" }}>
+                    {typeLabel} • {formatIsoToBrDate(e.event_date)}
+                    {hhmmFromEventTime(e.event_time) ? ` às ${hhmmFromEventTime(e.event_time)}` : ""}
+                  </div>
+
+                  <button type="button" onClick={() => removeEvent(e.id)} style={linkBtn} title="Remover evento">
                     Remover
                   </button>
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
+      </AppCard>
 
-        {editMsg && !isEditing && <div style={{ marginTop: 10, color: "#2e7d32", fontSize: 14 }}>{editMsg}</div>}
-      </section>
-    </main>
+      <div style={{ height: 120 }} />
+    </AppCard>
   );
 }

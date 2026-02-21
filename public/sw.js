@@ -1,72 +1,30 @@
-/* eslint-disable no-restricted-globals */
-
-const CACHE_NAME = "plantacheck-v1";
-
-const CORE = [
-  "/",
-  "/manifest.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/maskable-512.png",
-];
+// public/sw.js
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    (async () => {
-      const cache = await caches.open(CACHE_NAME);
-      await cache.addAll(CORE);
-      self.skipWaiting();
-    })()
-  );
+  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      const keys = await caches.keys();
-      await Promise.all(
-        keys.map((k) => (k === CACHE_NAME ? null : caches.delete(k)))
-      );
-      await self.clients.claim();
-    })()
-  );
+  event.waitUntil(self.clients.claim());
 });
 
+// ✅ SW seguro: não intercepta Next chunks nem auth.
+// Se der erro, deixa o browser seguir o fluxo normal.
 self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  const url = new URL(req.url);
+  const url = new URL(event.request.url);
 
-  // Só trata o mesmo domínio
+  // não mexer em outros domínios
   if (url.origin !== self.location.origin) return;
 
-  // Navegação: rede primeiro, cache só como fallback
-  if (req.mode === "navigate") {
-    event.respondWith(
-      (async () => {
-        try {
-          const fresh = await fetch(req);
-          return fresh;
-        } catch {
-          const cached = await caches.match("/");
-          return cached || Response.error();
-        }
-      })()
-    );
-    return;
-  }
+  // não interceptar assets críticos do Next
+  if (url.pathname.startsWith("/_next/")) return;
 
-  // Estáticos: cache-first
-  event.respondWith(
-    (async () => {
-      const cached = await caches.match(req);
-      if (cached) return cached;
+  // não interceptar API/auth callback do Supabase
+  if (url.pathname.startsWith("/auth/")) return;
 
-      const fresh = await fetch(req);
-      if (req.method === "GET" && fresh && fresh.ok) {
-        const cache = await caches.open(CACHE_NAME);
-        cache.put(req, fresh.clone());
-      }
-      return fresh;
-    })()
-  );
+  // não interceptar arquivos de dev/hot reload
+  if (url.pathname.includes("hot-update")) return;
+
+  // por padrão: não faz nada (pass-through)
+  // (isso evita "Failed to fetch" e quebra geral)
 });

@@ -1,33 +1,60 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* Base */
+  --pc-bg: #f6f7f9;
+  --pc-card: #ffffff;
+  --pc-text: #111111;
+  --pc-muted: #4b5563;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Bordas / sombras */
+  --pc-border: #e6e8eb;
+  --pc-border-2: #d7dbe0;
+  --pc-shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
+
+  /* Raio / espaçamento */
+  --pc-radius: 16px;
+  --pc-radius-sm: 12px;
+
+  /* Cores de ação */
+  --pc-primary: #111111;
+  --pc-primary-text: #ffffff;
+  --pc-green-bg: #e9fff0;
+  --pc-green-border: #cfe9d7;
+  --pc-red-bg: #ffe9e9;
+  --pc-red-border: #ffd0d0;
+  --pc-red-text: #7a1b1b;
+  --pc-green-text: #14532d;
+
+  /* Altura “segura” do bottom nav (ajusta o respiro do conteúdo) */
+  --pc-bottomnav-safe: 96px;
+
+  /* Evita o browser forçar dark */
+  color-scheme: light;
 }
 
 html,
 body {
-  max-width: 100vw;
-  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  background: var(--pc-bg);
+  color: var(--pc-text);
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  margin: 0;
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* evita que o conteúdo “encoste” no bottom nav */
+  padding-bottom: calc(env(safe-area-inset-bottom) + var(--pc-bottomnav-safe));
 }
 
 * {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
+  min-width: 0;
 }
 
 a {
@@ -35,8 +62,228 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+/* ===== PlantaCheck UI Kit (igual ao login) ===== */
+
+.pc-page {
+  min-height: 100dvh;
+  width: 100%;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+
+  padding: 18px;
+  overflow-x: clip;
+}
+
+.pc-container {
+  width: min(460px, 100%);
+  margin: 0 auto;
+  display: block;
+}
+
+.pc-card {
+  width: 100%;
+  background: var(--pc-card);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius);
+  padding: 18px;
+  box-shadow: var(--pc-shadow);
+}
+
+.pc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pc-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pc-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--pc-green-bg);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--pc-green-border);
+  font-size: 22px;
+  flex: 0 0 auto;
+}
+
+.pc-title {
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1.1;
+}
+
+.pc-subtitle {
+  font-size: 13px;
+  color: var(--pc-muted);
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.pc-label {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--pc-text);
+}
+
+.pc-input {
+  width: 100%;
+  height: 44px;
+  border-radius: var(--pc-radius-sm);
+  border: 1px solid var(--pc-border-2);
+  padding: 0 12px;
+  background: #fff;
+  color: var(--pc-text);
+  outline: none;
+}
+
+.pc-input:focus {
+  border-color: #b9c3cf;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
+}
+
+.pc-btn-primary {
+  width: 100%;
+  height: 46px;
+  border-radius: var(--pc-radius-sm);
+  border: none;
+  background: var(--pc-primary);
+  color: var(--pc-primary-text);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.pc-btn-secondary {
+  width: 100%;
+  height: 44px;
+  border-radius: var(--pc-radius-sm);
+  border: 1px solid var(--pc-border-2);
+  background: #fff;
+  color: var(--pc-text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pc-btn-link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: #111;
+  font-weight: 800;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.pc-alert-error {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--pc-red-bg);
+  border: 1px solid var(--pc-red-border);
+  color: var(--pc-red-text);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.pc-alert-ok {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--pc-green-bg);
+  border: 1px solid var(--pc-green-border);
+  color: var(--pc-green-text);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* chips simples (base genérica, se quiser usar em outros lugares) */
+.pc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--pc-border);
+  background: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  color: #111;
+}
+
+/* ===== Chips do Dashboard (responsivo, sem sobrepor) ===== */
+
+.pc-chips {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+
+  /* no mobile: 2 colunas */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* em telas maiores: 3 colunas (fica igual ao print do PC) */
+@media (min-width: 420px) {
+  .pc-chips {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.pc-chip-btn {
+  width: 100%;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid #d7dbe0;
+  background: #fff;
+  color: #111;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+
+  /* evita “sambar” no iOS/Android */
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pc-chip-btn.is-active {
+  border-color: #111;
+  background: #111;
+  color: #fff;
+}
+
+.pc-chip-count {
+  opacity: 0.75;
+  font-weight: 900;
+}
+
+.pc-chip-btn.is-active .pc-chip-count {
+  opacity: 0.9;
+}
+
+/* Pequeno ajuste para telas bem estreitas */
+@media (max-width: 420px) {
+  .pc-page {
+    padding: 14px;
+  }
+  .pc-card {
+    padding: 16px;
   }
 }
