@@ -245,6 +245,18 @@ const backBtn: React.CSSProperties = {
   gap: 8,
 };
 
+/** ✅ FIX: estilo de "link" para ações pequenas (ex.: Remover evento) */
+const linkBtn: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  padding: 0,
+  cursor: "pointer",
+  textDecoration: "underline",
+  font: "inherit",
+  fontWeight: 900,
+  color: "#111",
+};
+
 function alertErrorBox(msg: string): React.CSSProperties {
   return {
     marginBottom: 12,
